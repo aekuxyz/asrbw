@@ -15,85 +15,86 @@ from collections import defaultdict
 import string
 import re
 import os # For file operations (game counter)
+from typing import Union # Correct import for Union type hint
 
 # --- Configuration Section ---
 # IMPORTANT: Replace these placeholders with your actual values.
 # You can set these as environment variables for better security in production.
 
 # Discord Bot Token (GET THIS FROM Discord Developer Portal)
-DISCORD_BOT_TOKEN = 'MTExMjczNTQxODA4MTg4NjIwOA.GmmR8m.F5VjpsmqZPJaZJAzCCQMSx2KlJD9vMJvb3MWLQ'
+DISCORD_BOT_TOKEN = 'YOUR_DISCORD_BOT_TOKEN_HERE'
 
 # MySQL Database Details (This is the database shared by the bot and MC server plugin)
 MYSQL_HOST = "localhost"
 MYSQL_PORT = 3306
 MYSQL_DATABASE = "asrbw_db" # Ensure this database is created and user has access
 MYSQL_USER = "asrbw_user"
-MYSQL_PASSWORD = "Ahmed7644"
+MYSQL_PASSWORD = "your_mysql_password"
 
 # Discord Role IDs (GET THESE BY ENABLING DEVELOPER MODE IN DISCORD AND RIGHT-CLICKING ROLES)
-MUTED_ROLE_ID = 1377686663777751051 # Example ID: Create this role and deny it permissions in all channels
-BANNED_ROLE_ID = 1377667120103428238 # Example ID: For queue bans (if implemented)
-FROZEN_ROLE_ID = 1377610292787150949 # Example ID: For screenshare (if implemented)
-PPP_MANAGER_ROLE_ID = 1377664813622366289 # Role allowed to start PPP polls
-HIGHEST_ADMIN_ROLE_ID = 1377665556446187651 # Role that bypasses channel restrictions (e.g., Server Owner, Head Admin)
-SCREENSHARER_ROLE_ID = 1377610245333057566 # Role for screensharers (NOT general staff)
+MUTED_ROLE_ID = 123456789012345678 # Example ID: Create this role and deny it permissions in all channels
+BANNED_ROLE_ID = 123456789012345678 # Example ID: For queue bans (if implemented)
+FROZEN_ROLE_ID = 123456789012345678 # Example ID: For screenshare (if implemented)
+PPP_MANAGER_ROLE_ID = 123456789012345678 # Role allowed to start PPP polls
+HIGHEST_ADMIN_ROLE_ID = 123456789012345678 # Role that bypasses channel restrictions (e.g., Server Owner, Head Admin)
+SCREENSHARER_ROLE_ID = 123456789012345678 # Role for screensharers (NOT general staff)
 
 # New: Role for all registered users
-REGISTERED_ROLE_ID = 1376585406249959524 # Example ID: Role assigned upon successful registration
+REGISTERED_ROLE_ID = 123456789012345678 # Example ID: Role assigned upon successful registration
 
 # New: ELO Rank Role IDs (Create these roles in your Discord server)
-IRON_ROLE_ID = 1376879684519727114
-BRONZE_ROLE_ID = 1376879728455319593
-SILVER_ROLE_ID = 1376879758243139634
-GOLD_ROLE_ID = 1376879783991967804
-TOPAZ_ROLE_ID = 1376879826669015080
-PLATINUM_ROLE_ID = 1376879895262531664
+IRON_ROLE_ID = 123456789012345678
+BRONZE_ROLE_ID = 123456789012345678
+SILVER_ROLE_ID = 123456789012345678
+GOLD_ROLE_ID = 123456789012345678
+TOPAZ_ROLE_ID = 123456789012345678
+PLATINUM_ROLE_ID = 123456789012345678
 
 # Comprehensive list of roles considered "staff" for moderation commands
 MODERATION_ROLES_IDS = [
     HIGHEST_ADMIN_ROLE_ID, # The highest admin role
-    1376585289874538497, # Example: Moderator Role ID
-    1376585256991330516, # Example: Administrator Role ID
-    1376585204923109416  # Example: Uito Role ID (newly added concept)
+    123456789012345678, # Example: Moderator Role ID
+    123456789012345678, # Example: Administrator Role ID
+    123456789012345678  # Example: Uito Role ID (newly added concept)
 ]
 
 # Roles that can vote on strike polls (PUPS, PUGS, PREMIUM)
 VOTER_ROLES_IDS = [
-    1377332676628975708, # PUPS Role ID
-    1377332728428625950, # PUGS Role ID
-    1377332777829142659  # PREMIUM Role ID
+    123456789012345678, # PUPS Role ID
+    123456789012345678, # PUGS Role ID
+    123456789012345678  # PREMIUM Role ID
 ]
 
 # Discord Channel IDs
-GAME_LOGS_CHANNEL_ID = 1377611419234865152
-TICKET_LOGS_CHANNEL_ID = 1377617800150913126
-ALERTS_CHANNEL_ID = 1377353846581366904
-STRIKE_LOGS_CHANNEL_ID = 1377355415284875425 # This channel will now also be used for mute/ban logs
-SCREENSHARE_LOGS_CHANNEL_ID = 1377688164923343072
-GAMES_RESULTS_CHANNEL_ID = 1377353788226011246 # New: Channel to post completed game results images
+GAME_LOGS_CHANNEL_ID = 123456789012345678
+TICKET_LOGS_CHANNEL_ID = 123456789012345678
+ALERTS_CHANNEL_ID = 123456789012345678
+STRIKE_LOGS_CHANNEL_ID = 123456789012345678 # This channel will now also be used for mute/ban logs
+SCREENSHARE_LOGS_CHANNEL_ID = 123456789012345678
+GAMES_RESULTS_CHANNEL_ID = 123456789012345678 # New: Channel to post completed game results images
 
 # Specific Channel IDs for Commands (for restrictions)
-REGISTER_CHANNEL_ID = 1376879395574124544 # Channel where =register can ONLY be used
-STRIKE_REQUEST_CHANNEL_ID = 1377351296868417647 # Channel where =requeststrike can be used
+REGISTER_CHANNEL_ID = 123456789012345678 # Channel where =register can ONLY be used
+STRIKE_REQUEST_CHANNEL_ID = 123456789012345678 # Channel where =requeststrike can be used
 POLL_CHANNEL_ID = 123456789012345678 # Channel where =poll can be used
-TICKET_CHANNEL_ID = 1377617914177392640 # Channel where =ticket command is used to create tickets
-STAFF_UPDATE_CHANNEL_ID = 1377306838793453578 # Channel to log staff role changes
+TICKET_CHANNEL_ID = 123456789012345678 # Channel where =ticket command is used to create tickets
+STAFF_UPDATE_CHANNEL_ID = 123456789012345678 # Channel to log staff role changes
 
-# Queue Voice Channel IDs (placeholders, actual queue commands not fully implemented)
-QUEUE_3V3_VOICE_CHANNEL_ID = 1377307263580242022
-QUEUE_4V4_VOICE_CHANNEL_ID = 1377307337294872670
-PPP_3V3_VOICE_CHANNEL_ID = 1377307391267307702 # New: Voice channel for 3v3 PPP queue
-PPP_4V4_VOICE_CHANNEL_ID = 1377307437656178836 # New: Voice channel for 4v4 PPP queue
+# Queue Voice Channel IDs (where players queue up)
+QUEUE_3V3_VOICE_CHANNEL_ID = 123456789012345678 # Players join this VC for 3v3 queue
+QUEUE_4V4_VOICE_CHANNEL_ID = 123456789012345678 # Players join this VC for 4v4 queue
+PPP_3V3_VOICE_CHANNEL_ID = 123456789012345678 # New: Voice channel for 3v3 PPP queue
+PPP_4V4_VOICE_CHANNEL_ID = 123456789012345678 # New: Voice channel for 4v4 PPP queue
 
 
 # Discord Category IDs
-TICKET_CATEGORY_ID = 1378238886056169533    
-SCREENSHARE_CATEGORY_ID = 1378239020311777361
-GAME_CATEGORY_ID = 1377351978547679232 # Text channels for games will be here
-GAME_VOICE_CATEGORY_ID = 1377352366038454344 # New: Dedicated category for game voice channels
+TICKET_CATEGORY_ID = 123456789012345678
+SCREENSHARE_CATEGORY_ID = 123456789012345678
+GAME_CATEGORY_ID = 123456789012345678 # Text channels for games will be here
+GAME_VOICE_CATEGORY_ID = 123456789012345678 # New: Dedicated category for game voice channels
 
 # Main Discord Server ID (Crucial for nickname updates and member fetching)
-MAIN_GUILD_ID = 1376550455714386031
+MAIN_GUILD_ID = 123456789012345678
 
 # ELO Configuration (Unified ELO)
 DEFAULT_ELO = 0.0 # Changed from 1000.0 to 0.0
@@ -114,15 +115,15 @@ ALL_RANK_ROLE_IDS = [data["role_id"] for data in ELO_THRESHOLDS.values()]
 
 
 # Queue Configuration
-MIN_PLAYERS_3V3 = 6
-MIN_PLAYERS_4V4 = 8
+MIN_PLAYERS_3V3 = 6 # 2 Captains + 4 players = 6
+MIN_PLAYERS_4V4 = 8 # 2 Captains + 6 players = 8
 
 # Available Bedwars Maps (MUST MATCH NAMES CONFIGURED IN YOUR MINECRAFT PLUGIN)
-AVAILABLE_MAPS = ["Invasion", "Lectus", "Archway"]
+AVAILABLE_MAPS = ["Ares", "Dragon's Nest", "Playgrounds"]
 
 # Font for Player Cards (Ensure this .ttf file is in the same directory as bot.py)
 # You might need to place an actual .ttf file like 'arial.ttf' in the same directory as your bot script.
-FONT_PATH = "arial.ttf"
+FONT_PATH = "arial.ttf" 
 
 # Registration Code Expiry
 REGISTRATION_CODE_EXPIRY_MINUTES = 5
@@ -140,7 +141,11 @@ queues = {
 active_games = {} # Stores game_id -> {text_channel_id, voice_channel_lobby_id, team_a_vc_id, team_b_vc_id, players: {discord_id: team}}
 active_tickets = {}
 active_screenshares = {}
-parties = defaultdict(lambda: {"members": [], "name": ""})
+
+# Party System: {owner_id: {"members": [member_id], "invite_pending": {invited_id: timestamp}}}
+parties = defaultdict(lambda: {"members": [], "invite_pending": {}})
+# Reverse lookup: {member_id: owner_id} for quick party lookup
+player_party_map = {}
 
 # --- Discord Bot Setup ---
 intents = discord.Intents.all()
@@ -748,6 +753,68 @@ async def check_temp_moderations_task():
                     await log_alert(f"Error during auto-unban role removal for {member.display_name}: {e}")
             await remove_temp_moderation_mysql(discord_id, 'ban')
 
+# --- Voice Channel Queue Monitoring Task ---
+@tasks.loop(seconds=10) # Check every 10 seconds
+async def check_voice_channels_for_queue():
+    guild = bot.get_guild(MAIN_GUILD_ID)
+    if not guild:
+        print(f"Guild with ID {MAIN_GUILD_ID} not found for voice channel queue check.")
+        return
+
+    # Check 3v3 queue
+    vc_3v3 = guild.get_channel(QUEUE_3V3_VOICE_CHANNEL_ID)
+    if vc_3v3 and isinstance(vc_3v3, discord.VoiceChannel):
+        current_players = [member for member in vc_3v3.members if not member.bot]
+        if len(current_players) >= MIN_PLAYERS_3V3:
+            print(f"Enough players ({len(current_players)}) in 3v3 queue. Starting game...")
+            # Shuffle players to randomize captain selection if needed, though first two are captains
+            random.shuffle(current_players) 
+            await start_game_logic(guild, current_players, "3v3")
+            # Clear the queue (players will be moved by start_game_logic)
+            queues["3v3"].clear()
+
+    # Check 4v4 queue
+    vc_4v4 = guild.get_channel(QUEUE_4V4_VOICE_CHANNEL_ID)
+    if vc_4v4 and isinstance(vc_4v4, discord.VoiceChannel):
+        current_players = [member for member in vc_4v4.members if not member.bot]
+        if len(current_players) >= MIN_PLAYERS_4V4:
+            print(f"Enough players ({len(current_players)}) in 4v4 queue. Starting game...")
+            random.shuffle(current_players)
+            await start_game_logic(guild, current_players, "4v4")
+            # Clear the queue (players will be moved by start_game_logic)
+            queues["4v4"].clear()
+
+async def start_game_logic(guild: discord.Guild, players: list[discord.Member], game_type: str):
+    """
+    Initiates the game creation process when enough players are in a queue.
+    This replaces the manual =startgame command.
+    """
+    # Select a random map
+    map_name = random.choice(AVAILABLE_MAPS)
+    game_number = get_next_game_number()
+
+    text_channel, voice_lobby_channel, _, _ = await create_game_channels(guild, players, game_type, map_name, game_number)
+
+    if text_channel and voice_lobby_channel:
+        # Send a message to a general announcement channel or the queue channel
+        # that a game has started and where to go.
+        announcement_channel = bot.get_channel(GAME_LOGS_CHANNEL_ID) # Or a dedicated announcement channel
+        if announcement_channel:
+            response_embed = discord.Embed(
+                title="🎉 Game Started Automatically!",
+                description=f"A new **{game_type}** game has started on **{map_name}**!\n"
+                            f"Game Channel: {text_channel.mention}\n"
+                            f"Voice Lobby: {voice_lobby_channel.mention}\n\n"
+                            f"Captains, please use the dropdown in your game channel to pick players!",
+                color=discord.Color.green()
+            )
+            response_embed.set_footer(text=f"Game #{game_number:04d} | Powered by ASRBW.net")
+            await announcement_channel.send(embed=response_embed)
+        
+        await log_game_event(f"Automated Game #{game_number:04d} started with players: {', '.join([p.display_name for p in players])} on map {map_name} ({game_type}).")
+    else:
+        await log_alert(f"Automated game start failed for {game_type} with players {', '.join([p.display_name for p in players])}. Check bot permissions and category IDs.")
+
 # --- Private Channel Creation Functions ---
 
 async def create_screenshare_channel(guild: discord.Guild, requester: discord.Member, target_player: discord.Member, reason: str, attachments: list[discord.Attachment]):
@@ -884,6 +951,14 @@ async def create_game_channels(guild: discord.Guild, players: list[discord.Membe
     Creates a private text channel and an initial 'Lobby' voice channel for a game.
     The voice channel will be in a separate category.
     """
+    if len(players) < 2:
+        await log_alert(f"Not enough players ({len(players)}) to start a game for Game #{game_number:04d}. Need at least 2 for captains.")
+        return None, None, None, None
+
+    # Assign Captains
+    captain_a_id = str(players[0].id)
+    captain_b_id = str(players[1].id)
+    
     overwrites_text = {
         guild.default_role: discord.PermissionOverwrite(view_channel=False)
     }
@@ -915,8 +990,9 @@ async def create_game_channels(guild: discord.Guild, players: list[discord.Membe
             await log_alert(f"Game voice category (ID: {GAME_VOICE_CATEGORY_ID}) not found for game voice channel creation.")
             return None, None, None, None
 
+        channel_name_prefix = "game" if game_type != "3v3" and game_type != "4v4" else game_type # Use game type for naming
         text_channel = await guild.create_text_channel(
-            f"game-{game_number:04d}", # e.g., game-0001
+            f"{channel_name_prefix}-{game_number:04d}", # e.g., game-0001 or 3v3-0001
             category=game_category,
             overwrites=overwrites_text,
             topic=f"Text channel for Game #{game_number:04d} ({game_type} on {map_name}). Players: {', '.join([p.display_name for p in players])}"
@@ -930,7 +1006,7 @@ async def create_game_channels(guild: discord.Guild, players: list[discord.Membe
         )
         print(f"Created game voice lobby channel: {voice_lobby_channel.name}")
 
-        # Store in active_games for later use (e.g., moving players, team selection)
+        # Initialize players in active_games, assigning captains to teams
         game_id = str(uuid.uuid4())
         active_games[game_id] = {
             "text_channel_id": text_channel.id,
@@ -941,21 +1017,28 @@ async def create_game_channels(guild: discord.Guild, players: list[discord.Membe
             "game_type": game_type,
             "map_name": map_name,
             "game_number": game_number,
-            "team_message_id": None # To store the message ID of the team embed
+            "team_message_id": None, # To store the message ID of the team embed
+            "captains": {"A": captain_a_id, "B": captain_b_id} # Store captain IDs
         }
+        active_games[game_id]["players"][captain_a_id] = "A"
+        active_games[game_id]["players"][captain_b_id] = "B"
+
 
         # Initial message for team selection
         team_embed = discord.Embed(
-            title=f"🎮 Game #{game_number:04d} - Team Selection",
-            description=f"Welcome to your game on **{map_name}**! Please select your team using the buttons below.\n"
-                        f"Join the voice lobby: {voice_lobby_channel.mention}\n\n"
-                        f"**Team A:**\n(Empty)\n\n**Team B:**\n(Empty)",
+            title=f"🎮 Game #{game_number:04d} - Team Selection (Draft)",
+            description=f"Welcome to your game on **{map_name}**! Please join the voice lobby: {voice_lobby_channel.mention}\n\n"
+                        f"**Captains:**\n"
+                        f"Team A: {players[0].mention}\n"
+                        f"Team B: {players[1].mention}\n\n"
+                        f"It's {players[0].mention}'s turn to pick!", # Initial pick for Team A
             color=discord.Color.blue()
         )
-        team_embed.set_footer(text="Use =p to pick your team. Once teams are full, a staff member can start the game.")
+        team_embed.set_footer(text="Captains use the dropdown to pick players. Powered by asrbw.net")
         
         view = TeamSelectionView(game_id, players)
         team_message = await text_channel.send(embed=team_embed, view=view)
+        view.message = team_message # Store message for view to edit
         active_games[game_id]["team_message_id"] = team_message.id
 
         # Move players from queue VCs to the new game lobby VC
@@ -1079,17 +1162,113 @@ async def move_players_to_team_vcs(guild: discord.Guild, game_id: str):
 
 # --- Team Selection View ---
 class TeamSelectionView(View):
-    def __init__(self, game_id: str, initial_players: list[discord.Member]):
+    def __init__(self, game_id: str, all_players_members: list[discord.Member]):
         super().__init__(timeout=3600) # Timeout after 1 hour if no interaction
         self.game_id = game_id
-        self.initial_players = {str(p.id): p for p in initial_players} # Store initial players
+        self.all_players_members = {str(p.id): p for p in all_players_members} # Store all members for display
+        self.message = None # Will be set by create_game_channels
+
+        game_data = active_games.get(self.game_id)
+        if not game_data:
+            raise ValueError(f"Game data for {game_id} not found during TeamSelectionView initialization.")
+
+        self.captains = game_data["captains"] # {"A": captain_a_id, "B": captain_b_id}
         
-        # Initialize players in game_data if not already
-        if self.game_id not in active_games:
-            active_games[self.game_id] = {"players": {}}
-        for p_id in self.initial_players:
-            if p_id not in active_games[self.game_id]["players"]:
-                active_games[self.game_id]["players"][p_id] = None # No team initially
+        # Initialize available players (all players minus the already assigned captains)
+        self.available_players_ids = [
+            p_id for p_id in game_data["players"] 
+            if p_id not in self.captains.values()
+        ]
+        
+        # Define picking sequence based on game type
+        if game_data["game_type"] == "3v3": # 6 players total: C1, C2, P1, P2, P3, P4
+            # A picks 1, B picks 2. Last player (P4) automatically goes to A.
+            self.picking_sequence = ["A", "B", "B"] 
+        elif game_data["game_type"] == "4v4": # 8 players total: C1, C2, P1, P2, P3, P4, P5, P6
+            # A picks 1, B picks 2, A picks 2, B picks 1 (snake draft)
+            self.picking_sequence = ["A", "B", "B", "A", "A", "B"]
+        else:
+            self.picking_sequence = [] # Should not happen with current validation
+
+        self.current_pick_index = 0
+        self.current_picking_captain_team = None
+        self.current_picking_captain_id = None
+        
+        self.update_picking_turn() # Set initial picking turn
+
+        self.add_item(self.create_player_select())
+        self.add_item(Button(label="Start Game (Staff Only)", style=ButtonStyle.blurple, custom_id="start_game", disabled=True))
+
+    def update_picking_turn(self):
+        """Determines whose turn it is to pick."""
+        game_data = active_games.get(self.game_id)
+        if not game_data: return
+
+        if self.current_pick_index < len(self.picking_sequence):
+            self.current_picking_captain_team = self.picking_sequence[self.current_pick_index]
+            self.current_picking_captain_id = self.captains[self.current_picking_captain_team]
+        else:
+            self.current_picking_captain_team = None
+            self.current_picking_captain_id = None
+        self.update_select_options() # Update select options whenever turn changes
+
+    def update_select_options(self):
+        """Updates the options for the player selection dropdown."""
+        options = []
+        for player_id in self.available_players_ids:
+            member = self.all_players_members.get(player_id)
+            if member:
+                options.append(SelectOption(label=member.display_name, value=player_id))
+        
+        # Ensure there's always at least one option to avoid Discord API error for empty select
+        if not options:
+            options.append(SelectOption(label="No players left to pick", value="no_players", default=True))
+
+        # Find the existing select component and update its options
+        for child in self.children:
+            if isinstance(child, Select) and child.custom_id == "player_pick_select":
+                child.options = options
+                child.disabled = (self.current_picking_captain_id is None or not self.available_players_ids)
+                break
+        else: # If select not found, create it
+            self.add_item(self.create_player_select())
+
+
+    def create_player_select(self):
+        """Creates the Select component for player picking (used for initial creation)."""
+        options = []
+        for player_id in self.available_players_ids:
+            member = self.all_players_members.get(player_id)
+            if member:
+                options.append(SelectOption(label=member.display_name, value=player_id))
+        
+        if not options:
+            options.append(SelectOption(label="No players left to pick", value="no_players", default=True))
+
+        select = Select(
+            custom_id="player_pick_select",
+            placeholder="Pick a player...",
+            options=options,
+            disabled=(self.current_picking_captain_id is None or not self.available_players_ids)
+        )
+        return select
+
+    async def update_view(self, interaction: discord.Interaction):
+        """Re-renders the view with updated components."""
+        # Update Start Game button state
+        start_game_button = next((item for item in self.children if item.custom_id == "start_game"), None)
+        if start_game_button:
+            game_data = active_games.get(self.game_id)
+            all_assigned = all(team is not None for team in game_data["players"].values())
+            start_game_button.disabled = not all_assigned # Enable only when all players are assigned
+            if all_assigned:
+                # Disable the pick select once all players are assigned
+                for child in self.children:
+                    if isinstance(child, Select) and child.custom_id == "player_pick_select":
+                        child.disabled = True
+        
+        await interaction.message.edit(view=self)
+
 
     async def update_team_embed(self, interaction: discord.Interaction):
         game_data = active_games.get(self.game_id)
@@ -1098,90 +1277,117 @@ class TeamSelectionView(View):
 
         team_a_members = []
         team_b_members = []
-        unassigned_members = []
+        available_players_display = []
 
-        for player_id, team in game_data["players"].items():
-            member = interaction.guild.get_member(int(player_id))
-            if not member:
-                member = self.initial_players.get(player_id) # Try to get from initial list if not found in guild
+        # Sort players for consistent display in embed
+        sorted_player_ids = sorted(game_data["players"].keys(), key=lambda x: self.all_players_members.get(x).display_name if self.all_players_members.get(x) else x)
+
+        for player_id in sorted_player_ids:
+            team = game_data["players"].get(player_id)
+            member = self.all_players_members.get(player_id)
+            member_display_name = member.display_name if member else f"Unknown User ({player_id})"
             
-            if member:
-                if team == "A":
-                    team_a_members.append(member.display_name)
-                elif team == "B":
-                    team_b_members.append(member.display_name)
-                else:
-                    unassigned_members.append(member.display_name)
-            else:
-                unassigned_members.append(f"Unknown User ({player_id})")
+            if player_id == self.captains["A"]:
+                team_a_members.append(f"👑 {member_display_name} (Captain)")
+            elif player_id == self.captains["B"]:
+                team_b_members.append(f"👑 {member_display_name} (Captain)")
+            elif team == "A":
+                team_a_members.append(member_display_name)
+            elif team == "B":
+                team_b_members.append(member_display_name)
+            elif player_id in self.available_players_ids:
+                available_players_display.append(member_display_name)
 
         team_a_str = "\n".join(team_a_members) if team_a_members else "(Empty)"
         team_b_str = "\n".join(team_b_members) if team_b_members else "(Empty)"
-        unassigned_str = "\n".join(unassigned_members) if unassigned_members else "(None)"
+        available_str = "\n".join(available_players_display) if available_players_display else "(None)"
 
         embed = discord.Embed(
-            title=f"🎮 Game #{game_data['game_number']:04d} - Team Selection",
-            description=f"Welcome to your game on **{game_data['map_name']}**! Please select your team using the buttons below.\n"
-                        f"Join the voice lobby: {interaction.guild.get_channel(game_data['voice_channel_lobby_id']).mention}\n\n"
+            title=f"🎮 Game #{game_data['game_number']:04d} - Team Selection (Draft)",
+            description=f"Welcome to your game on **{game_data['map_name']}**! Join the voice lobby: {interaction.guild.get_channel(game_data['voice_channel_lobby_id']).mention}\n\n"
                         f"**Team A:**\n{team_a_str}\n\n**Team B:**\n{team_b_str}\n\n"
-                        f"**Unassigned Players:**\n{unassigned_str}",
+                        f"**Available Players:**\n{available_str}\n\n",
             color=discord.Color.blue()
         )
-        embed.set_footer(text="Use =p to pick your team. Once teams are full, a staff member can start the game.")
+
+        if self.current_picking_captain_id:
+            captain_member = self.all_players_members.get(self.current_picking_captain_id)
+            if captain_member:
+                embed.add_field(name="Current Pick", value=f"It's {captain_member.mention} (Team {self.current_picking_captain_team})'s turn to pick!", inline=False)
+            else:
+                embed.add_field(name="Current Pick", value=f"It's Team {self.current_picking_captain_team}'s turn to pick!", inline=False)
+        else:
+            embed.add_field(name="Draft Complete!", value="All players have been assigned to teams.", inline=False)
+            
+        embed.set_footer(text="Captains use the dropdown to pick players. Powered by asrbw.net")
 
         # Edit the original message
         try:
-            message_to_edit = await interaction.channel.fetch_message(game_data["team_message_id"])
-            await message_to_edit.edit(embed=embed, view=self)
+            await self.message.edit(embed=embed)
         except discord.NotFound:
             print("Team selection message not found, cannot update.")
         except Exception as e:
             print(f"Error updating team selection embed: {e}")
 
-    @discord.ui.button(label="Join Team A", style=ButtonStyle.green, custom_id="join_team_a")
-    async def join_team_a_button(self, interaction: discord.Interaction, button: Button):
+    @discord.ui.select(custom_id="player_pick_select")
+    async def player_pick_select(self, interaction: discord.Interaction, select: Select):
         game_data = active_games.get(self.game_id)
         if not game_data:
             await interaction.response.send_message("This game is no longer active.", ephemeral=True)
+            return
+
+        # Check if it's the correct captain's turn
+        if str(interaction.user.id) != self.current_picking_captain_id:
+            await interaction.response.send_message(f"It's not your turn to pick! It's {self.all_players_members.get(self.current_picking_captain_id).display_name}'s turn.", ephemeral=True)
             return
         
-        if str(interaction.user.id) not in game_data["players"]:
-            await interaction.response.send_message("You are not part of this game!", ephemeral=True)
+        if not select.values or select.values[0] == "no_players":
+            await interaction.response.send_message("No players left to pick.", ephemeral=True)
             return
 
-        game_data["players"][str(interaction.user.id)] = "A"
+        picked_player_id = select.values[0]
+        picked_player_member = self.all_players_members.get(picked_player_id)
+
+        if picked_player_id not in self.available_players_ids:
+            await interaction.response.send_message(f"{picked_player_member.display_name} is no longer available or already picked.", ephemeral=True)
+            return
+
+        # Assign picked player to the current captain's team
+        game_data["players"][picked_player_id] = self.current_picking_captain_team
+        self.available_players_ids.remove(picked_player_id)
+
         await interaction.response.defer() # Defer the interaction response
+
+        # Check for party member auto-assignment
+        party_owner_id = player_party_map.get(picked_player_id)
+        if party_owner_id:
+            party_info = parties.get(party_owner_id)
+            if party_info and len(party_info["members"]) == 2: # Only for 2-person parties
+                other_party_member_id = next((m_id for m_id in party_info["members"] if m_id != picked_player_id), None)
+                if other_party_member_id and other_party_member_id in self.available_players_ids:
+                    game_data["players"][other_party_member_id] = self.current_picking_captain_team
+                    self.available_players_ids.remove(other_party_member_id)
+                    other_member_display_name = self.all_players_members.get(other_party_member_id).display_name if self.all_players_members.get(other_party_member_id) else f"Unknown User ({other_party_member_id})"
+                    await interaction.followup.send(f"👥 {picked_player_member.display_name}'s party member, {other_member_display_name}, has also been assigned to Team {self.current_picking_captain_team}!", ephemeral=False)
+
+        # Auto-assign last player for 3v3 if applicable
+        if game_data["game_type"] == "3v3" and len(self.available_players_ids) == 1:
+            last_player_id = self.available_players_ids[0]
+            game_data["players"][last_player_id] = "A" # Auto-assign to Team A
+            self.available_players_ids.remove(last_player_id)
+            await interaction.followup.send(f"The last player, {self.all_players_members.get(last_player_id).display_name}, has been automatically assigned to Team A!", ephemeral=False)
+
+
+        # Move to next pick
+        self.current_pick_index += 1
+        self.update_picking_turn() # Update whose turn it is and refresh select options
+
         await self.update_team_embed(interaction)
+        await self.update_view(interaction) # Update the view to reflect changes (e.g., disabled select)
 
-    @discord.ui.button(label="Join Team B", style=ButtonStyle.red, custom_id="join_team_b")
-    async def join_team_b_button(self, interaction: discord.Interaction, button: Button):
-        game_data = active_games.get(self.game_id)
-        if not game_data:
-            await interaction.response.send_message("This game is no longer active.", ephemeral=True)
-            return
+        if not self.available_players_ids:
+            await interaction.followup.send("Draft complete! All players have been assigned to teams. Staff can now click 'Start Game'.", ephemeral=False)
 
-        if str(interaction.user.id) not in game_data["players"]:
-            await interaction.response.send_message("You are not part of this game!", ephemeral=True)
-            return
-
-        game_data["players"][str(interaction.user.id)] = "B"
-        await interaction.response.defer() # Defer the interaction response
-        await self.update_team_embed(interaction)
-    
-    @discord.ui.button(label="Leave Team", style=ButtonStyle.grey, custom_id="leave_team")
-    async def leave_team_button(self, interaction: discord.Interaction, button: Button):
-        game_data = active_games.get(self.game_id)
-        if not game_data:
-            await interaction.response.send_message("This game is no longer active.", ephemeral=True)
-            return
-
-        if str(interaction.user.id) not in game_data["players"]:
-            await interaction.response.send_message("You are not part of this game!", ephemeral=True)
-            return
-
-        game_data["players"][str(interaction.user.id)] = None # Set to None (unassigned)
-        await interaction.response.defer() # Defer the interaction response
-        await self.update_team_embed(interaction)
 
     @discord.ui.button(label="Start Game (Staff Only)", style=ButtonStyle.blurple, custom_id="start_game")
     async def start_game_button(self, interaction: discord.Interaction, button: Button):
@@ -1197,29 +1403,20 @@ class TeamSelectionView(View):
             return
 
         # Check if all players are assigned to a team
-        unassigned_players = [p_id for p_id, team in game_data["players"].items() if team is None]
-        if unassigned_players:
-            unassigned_mentions = [interaction.guild.get_member(int(p_id)).mention for p_id in unassigned_players if interaction.guild.get_member(int(p_id))]
-            await interaction.response.send_message(f"❌ Not all players have picked a team! Unassigned: {', '.join(unassigned_mentions)}", ephemeral=True)
+        all_assigned = all(team is not None for team in game_data["players"].values())
+        if not all_assigned:
+            unassigned_players = [self.all_players_members.get(p_id).mention for p_id, team in game_data["players"].items() if team is None and self.all_players_members.get(p_id)]
+            await interaction.response.send_message(f"❌ Not all players have picked a team! Unassigned: {', '.join(unassigned_players)}", ephemeral=True)
             return
         
-        # Check if teams are balanced (e.g., for 3v3, 3 players per team)
-        team_a_count = sum(1 for team in game_data["players"].values() if team == "A")
-        team_b_count = sum(1 for team in game_data["players"].values() if team == "B")
-
-        expected_players_per_team = len(game_data["players"]) // 2 # Assuming even split
-
-        if team_a_count != expected_players_per_team or team_b_count != expected_players_per_team:
-            await interaction.response.send_message(f"❌ Teams are not balanced! Team A: {team_a_count}, Team B: {team_b_count}. Expected {expected_players_per_team} per team.", ephemeral=True)
-            return
-
         await interaction.response.send_message("✅ Game starting! Moving players to team voice channels...", ephemeral=False)
         await move_players_to_team_vcs(interaction.guild, self.game_id)
         
-        # Disable buttons after game starts
+        # Disable all buttons and select after game starts
         for child in self.children:
             child.disabled = True
         await interaction.message.edit(view=self) # Update the message to disable buttons
+        self.stop() # Stop the view entirely
 
 # --- Bot Events ---
 @bot.event
@@ -1229,6 +1426,7 @@ async def on_ready():
     
     # Start background tasks
     check_temp_moderations_task.start()
+    check_voice_channels_for_queue.start() # Start monitoring voice channels
 
     # Set bot activity
     await bot.change_presence(activity=discord.Activity(type=discord.ActivityType.listening, name="asrbw.net"))
@@ -1755,7 +1953,7 @@ async def forcescore_error(ctx, error):
 @commands.has_permissions(manage_roles=True)
 @commands.bot_has_permissions(manage_roles=True)
 @commands.has_any_role(*MODERATION_ROLES_IDS)
-async def mute(ctx, member: commands.Union[discord.Member, int], duration_str: str, *, reason: str = "No reason provided"):
+async def mute(ctx, member: Union[discord.Member, int], duration_str: str, *, reason: str = "No reason provided"):
     """
     Mutes a member for a specified duration.
     Usage: =mute <@member|member_id> <duration> [reason] (e.g., 30m, 1h, 7d)
@@ -1844,7 +2042,7 @@ async def mute_error(ctx, error):
 @commands.has_permissions(manage_roles=True)
 @commands.bot_has_permissions(manage_roles=True)
 @commands.has_any_role(*MODERATION_ROLES_IDS)
-async def unmute(ctx, member: commands.Union[discord.Member, int], *, reason: str = "No reason provided"):
+async def unmute(ctx, member: Union[discord.Member, int], *, reason: str = "No reason provided"):
     """
     Unmutes a member by removing the Muted role.
     Usage: =unmute <@member|member_id> [reason]
@@ -1924,7 +2122,7 @@ async def unmute_error(ctx, error):
 @commands.has_permissions(manage_roles=True)
 @commands.bot_has_permissions(manage_roles=True)
 @commands.has_any_role(*MODERATION_ROLES_IDS)
-async def ban(ctx, member: commands.Union[discord.Member, int], duration_str: str, *, reason: str = "No reason provided"):
+async def ban(ctx, member: Union[discord.Member, int], duration_str: str, *, reason: str = "No reason provided"):
     """
     Assigns a 'banned' role to a member for a specified duration, preventing them from queuing.
     Usage: =ban <@member|member_id> <duration> [reason] (e.g., 30m, 1h, 7d, 'perm' for permanent)
@@ -2032,7 +2230,7 @@ async def ban_error(ctx, error):
 @commands.has_permissions(manage_roles=True)
 @commands.bot_has_permissions(manage_roles=True)
 @commands.has_any_role(*MODERATION_ROLES_IDS)
-async def unban(ctx, member: commands.Union[discord.Member, int], *, reason: str = "No reason provided"):
+async def unban(ctx, member: Union[discord.Member, int], *, reason: str = "No reason provided"):
     """
     Removes the 'banned' role from a member.
     Usage: =unban <@member|member_id> [reason]
@@ -2412,7 +2610,7 @@ async def undo_game_score_error(ctx, error):
 
 @bot.command(name='rescore')
 @commands.has_any_role(*MODERATION_ROLES_IDS)
-async def rescore_game(ctx, game_id: str, winning_player_ids_str: str, mvp_player: commands.Union[discord.Member, int] = None, new_game_type: str = "general"):
+async def rescore_game(ctx, game_id: str, winning_player_ids_str: str, mvp_player: Union[discord.Member, int] = None, new_game_type: str = "general"):
     """
     (Moderation) Rescores a previous game. First undoes, then applies new scores.
     Usage: =rescore <game_id> <winning_player_discord_ids> [mvp_player (@member|member_id)] [new_game_type (e.g., 3v3, 4v4)]
@@ -3055,57 +3253,453 @@ async def process_game_results(game_data: dict):
         print(f"Games results channel (ID: {GAMES_RESULTS_CHANNEL_ID}) not found. Cannot post game results.")
         await log_alert(f"Games results channel (ID: {GAMES_RESULTS_CHANNEL_ID}) not found. Game {game_id} results not posted.")
 
-# --- Example Game Start Command (for testing the channel creation and team selection) ---
-@bot.command(name='startgame')
-@commands.has_any_role(*MODERATION_ROLES_IDS)
-async def start_game_command(ctx, game_type: str, map_name: str, *player_mentions: discord.Member):
+# --- Party System ---
+class PartyInviteView(View):
+    def __init__(self, owner_id: str, invited_id: str):
+        super().__init__(timeout=180) # Invite expires in 3 minutes
+        self.owner_id = owner_id
+        self.invited_id = invited_id
+        self.accepted = False
+
+    async def on_timeout(self):
+        owner_member = bot.get_guild(MAIN_GUILD_ID).get_member(int(self.owner_id))
+        invited_member = bot.get_guild(MAIN_GUILD_ID).get_member(int(self.invited_id))
+        
+        if not self.accepted:
+            if owner_member:
+                try:
+                    await owner_member.send(embed=discord.Embed(
+                        title="⏱️ Party Invite Expired",
+                        description=f"Your invite to {invited_member.display_name if invited_member else 'an unknown user'} has expired.",
+                        color=discord.Color.orange()
+                    ))
+                except discord.Forbidden: pass # Cannot DM
+            if invited_member:
+                try:
+                    await invited_member.send(embed=discord.Embed(
+                        title="⏱️ Party Invite Expired",
+                        description=f"The party invite from {owner_member.display_name if owner_member else 'an unknown user'} has expired.",
+                        color=discord.Color.orange()
+                    ))
+                except discord.Forbidden: pass # Cannot DM
+        
+        # Clean up pending invite
+        if self.owner_id in parties and self.invited_id in parties[self.owner_id]["invite_pending"]:
+            del parties[self.owner_id]["invite_pending"][self.invited_id]
+        
+        for child in self.children:
+            child.disabled = True
+        if hasattr(self, 'message'):
+            try:
+                await self.message.edit(view=self)
+            except discord.NotFound: pass
+
+    @discord.ui.button(label="Accept", style=ButtonStyle.green)
+    async def accept_invite(self, interaction: discord.Interaction, button: Button):
+        if str(interaction.user.id) != self.invited_id:
+            await interaction.response.send_message("This invite is not for you!", ephemeral=True)
+            return
+
+        owner_member = interaction.guild.get_member(int(self.owner_id))
+        
+        # Check if either is already in a party
+        if str(interaction.user.id) in player_party_map:
+            await interaction.response.send_message("You are already in a party!", ephemeral=True)
+            return
+        if self.owner_id in player_party_map and player_party_map[self.owner_id] != self.owner_id:
+            await interaction.response.send_message("The party owner is no longer the owner or is in another party.", ephemeral=True)
+            return
+        if self.owner_id in parties and len(parties[self.owner_id]["members"]) >= 2:
+            await interaction.response.send_message("This party is already full!", ephemeral=True)
+            return
+
+        # Add to party
+        parties[self.owner_id]["members"].append(str(interaction.user.id))
+        player_party_map[str(interaction.user.id)] = self.owner_id
+        
+        self.accepted = True
+        self.stop() # Stop the view
+
+        # Clean up pending invite
+        if self.owner_id in parties and self.invited_id in parties[self.owner_id]["invite_pending"]:
+            del parties[self.owner_id]["invite_pending"][self.invited_id]
+
+        await interaction.response.send_message(f"You have joined {owner_member.display_name}'s party!", ephemeral=True)
+        if owner_member:
+            try:
+                await owner_member.send(embed=discord.Embed(
+                    title="🎉 Party Invite Accepted!",
+                    description=f"{interaction.user.display_name} has joined your party!",
+                    color=discord.Color.green()
+                ))
+            except discord.Forbidden: pass # Cannot DM
+        
+        for child in self.children:
+            child.disabled = True
+        await interaction.message.edit(view=self)
+
+
+    @discord.ui.button(label="Decline", style=ButtonStyle.red)
+    async def decline_invite(self, interaction: discord.Interaction, button: Button):
+        if str(interaction.user.id) != self.invited_id:
+            await interaction.response.send_message("This invite is not for you!", ephemeral=True)
+            return
+        
+        owner_member = interaction.guild.get_member(int(self.owner_id))
+
+        self.stop() # Stop the view
+
+        # Clean up pending invite
+        if self.owner_id in parties and self.invited_id in parties[self.owner_id]["invite_pending"]:
+            del parties[self.owner_id]["invite_pending"][self.invited_id]
+
+        await interaction.response.send_message(f"You have declined the party invite from {owner_member.display_name}.", ephemeral=True)
+        if owner_member:
+            try:
+                await owner_member.send(embed=discord.Embed(
+                    title="Party Invite Declined",
+                    description=f"{interaction.user.display_name} has declined your party invite.",
+                    color=discord.Color.red()
+                ))
+            except discord.Forbidden: pass # Cannot DM
+        
+        for child in self.children:
+            child.disabled = True
+        await interaction.message.edit(view=self)
+
+
+@bot.group(name='party', invoke_without_command=True)
+async def party(ctx):
     """
-    (Moderation) Starts a new game, creating channels and initiating team selection.
-    Usage: =startgame <game_type (e.g., 3v3, 4v4)> <map_name> <@player1> <@player2> ...
+    Manages your party. Use `=help party` for subcommands.
     """
-    if game_type.lower() not in ['3v3', '4v4']:
-        embed = discord.Embed(title="❌ Invalid Game Type", description="Game type must be '3v3' or '4v4'.", color=discord.Color.red())
+    if ctx.invoked_subcommand is None:
+        embed = discord.Embed(
+            title="🎉 Party System",
+            description="Manage your party with these subcommands:\n"
+                        "`=party create` - Create your own party.\n"
+                        "`=party invite <@member>` - Invite a member to your party (max 1).\n"
+                        "`=party status` - View your current party status.\n"
+                        "`=leave` - Leave your current party (or disband if owner).",
+            color=discord.Color.blue()
+        )
+        embed.set_footer(text="Powered by asrbw.net")
+        await ctx.send(embed=embed)
+
+@party.command(name='create')
+async def party_create(ctx):
+    """
+    Creates a new party. You will be the party owner.
+    """
+    user_id = str(ctx.author.id)
+    if user_id in player_party_map:
+        embed = discord.Embed(
+            title="❌ Already in a Party",
+            description="You are already in a party. Use `=leave` to leave your current party.",
+            color=discord.Color.red()
+        )
         return await ctx.send(embed=embed)
     
-    if map_name not in AVAILABLE_MAPS:
-        embed = discord.Embed(title="❌ Invalid Map", description=f"Map '{map_name}' is not in the list of available maps: {', '.join(AVAILABLE_MAPS)}", color=discord.Color.red())
+    parties[user_id]["members"].append(user_id)
+    player_party_map[user_id] = user_id
+
+    embed = discord.Embed(
+        title="✅ Party Created!",
+        description=f"You have created a party! You are the party owner. "
+                    f"Use `=party invite <@member>` to invite one person.",
+        color=discord.Color.green()
+    )
+    embed.set_footer(text="Powered by asrbw.net")
+    await ctx.send(embed=embed)
+
+@party.command(name='invite')
+async def party_invite(ctx, member: discord.Member):
+    """
+    Invites a member to your party (max 1 invited member).
+    Usage: =party invite <@member>
+    """
+    owner_id = str(ctx.author.id)
+    invited_id = str(member.id)
+
+    if owner_id not in parties or player_party_map.get(owner_id) != owner_id:
+        embed = discord.Embed(
+            title="❌ Not a Party Owner",
+            description="You must be a party owner to invite members. Use `=party create` first.",
+            color=discord.Color.red()
+        )
         return await ctx.send(embed=embed)
 
-    if not player_mentions:
-        embed = discord.Embed(title="❓ Missing Players", description="Please mention the players participating in the game.", color=discord.Color.orange())
+    if len(parties[owner_id]["members"]) >= 2:
+        embed = discord.Embed(
+            title="❌ Party Full",
+            description="Your party is already full (max 2 members).",
+            color=discord.Color.red()
+        )
         return await ctx.send(embed=embed)
 
-    game_number = get_next_game_number()
-    players_list = list(player_mentions) # Convert tuple to list
+    if invited_id in player_party_map:
+        embed = discord.Embed(
+            title="❌ Already in a Party",
+            description=f"{member.display_name} is already in a party.",
+            color=discord.Color.red()
+        )
+        return await ctx.send(embed=embed)
     
-    text_channel, voice_lobby_channel, _, _ = await create_game_channels(ctx.guild, players_list, game_type, map_name, game_number)
+    if invited_id == owner_id:
+        embed = discord.Embed(
+            title="❌ Cannot Invite Yourself",
+            description="You cannot invite yourself to your own party.",
+            color=discord.Color.red()
+        )
+        return await ctx.send(embed=embed)
 
-    if text_channel and voice_lobby_channel:
-        response_embed = discord.Embed(
-            title="🎉 Game Started!",
-            description=f"Game #{game_number:04d} has been initiated on **{map_name}** ({game_type}).\n"
-                        f"Text Channel: {text_channel.mention}\n"
-                        f"Voice Lobby: {voice_lobby_channel.mention}",
+    # Check for pending invites to prevent spam
+    if invited_id in parties[owner_id]["invite_pending"]:
+        embed = discord.Embed(
+            title="⚠️ Invite Already Sent",
+            description=f"An invite has already been sent to {member.display_name} and is pending.",
+            color=discord.Color.orange()
+        )
+        return await ctx.send(embed=embed)
+
+    try:
+        invite_embed = discord.Embed(
+            title="💌 Party Invite!",
+            description=f"{ctx.author.display_name} has invited you to their party!",
+            color=discord.Color.blue()
+        )
+        invite_embed.set_footer(text="This invite will expire in 3 minutes.")
+        
+        view = PartyInviteView(owner_id, invited_id)
+        invite_message = await member.send(embed=invite_embed, view=view)
+        view.message = invite_message # Store message for timeout editing
+
+        # Store pending invite
+        parties[owner_id]["invite_pending"][invited_id] = datetime.datetime.now(datetime.timezone.utc)
+
+        embed = discord.Embed(
+            title="✅ Party Invite Sent!",
+            description=f"An invite has been sent to {member.mention}.",
             color=discord.Color.green()
         )
-        response_embed.set_footer(text="Players can now use the buttons in the game channel to pick teams.")
-        await ctx.send(embed=response_embed)
-        await log_game_event(f"Game #{game_number:04d} started by {ctx.author.display_name} with players: {', '.join([p.display_name for p in players_list])} on map {map_name}.")
-    else:
-        error_embed = discord.Embed(title="❌ Game Start Failed", description="Failed to create game channels. Please check bot permissions and category IDs.", color=discord.Color.red())
-        await ctx.send(embed=error_embed)
+        await ctx.send(embed=embed)
+    except discord.Forbidden:
+        embed = discord.Embed(
+            title="❌ DM Failed",
+            description=f"Could not send a DM to {member.mention}. They might have DMs disabled.",
+            color=discord.Color.red()
+        )
+        await ctx.send(embed=embed)
+    except Exception as e:
+        embed = discord.Embed(
+            title="⚠️ Error",
+            description=f"An error occurred while sending the invite: {e}",
+            color=discord.Color.red()
+        )
+        await ctx.send(embed=embed)
+        print(f"Error sending party invite: {e}")
 
-@start_game_command.error
-async def start_game_command_error(ctx, error):
-    if isinstance(error, commands.MissingAnyRole):
-        await ctx.send(embed=discord.Embed(title="⛔ Permission Denied", description="You do not have permission to use this command. You need a moderation role.", color=discord.Color.red()))
-    elif isinstance(error, commands.MissingRequiredArgument):
-        await ctx.send(embed=discord.Embed(title="❓ Missing Arguments", description="Missing arguments. Usage: `=startgame <game_type> <map_name> <@player1> <@player2> ...`", color=discord.Color.orange()))
+@party_invite.error
+async def party_invite_error(ctx, error):
+    if isinstance(error, commands.MissingRequiredArgument):
+        await ctx.send(embed=discord.Embed(title="❓ Missing Argument", description="Please mention the member you want to invite. Usage: `=party invite <@member>`", color=discord.Color.orange()))
     elif isinstance(error, commands.MemberNotFound):
-        await ctx.send(embed=discord.Embed(title="🔍 Member Not Found", description="Could not find one or more mentioned members. Please check the mentions.", color=discord.Color.red()))
+        await ctx.send(embed=discord.Embed(title="🔍 Member Not Found", description="Could not find that member. Please mention them properly (e.g., `@Username`).", color=discord.Color.red()))
     else:
         await ctx.send(embed=discord.Embed(title="⚠️ Error", description=f"An unexpected error occurred: {error}", color=discord.Color.red()))
-        print(f"Error in startgame command: {error}")
+        print(f"Error in party invite command: {error}")
+
+@bot.command(name='leave')
+async def leave_party(ctx):
+    """
+    Leaves your current party. If you are the owner, the party will be disbanded.
+    """
+    user_id = str(ctx.author.id)
+
+    if user_id not in player_party_map:
+        embed = discord.Embed(
+            title="❌ Not in a Party",
+            description="You are not currently in a party.",
+            color=discord.Color.red()
+        )
+        return await ctx.send(embed=embed)
+
+    owner_id = player_party_map[user_id]
+
+    if owner_id == user_id: # User is the party owner
+        party_members = parties[owner_id]["members"].copy() # Get a copy before modifying
+        for member_id in party_members:
+            if member_id in player_party_map:
+                del player_party_map[member_id]
+        del parties[owner_id] # Disband the party
+
+        embed = discord.Embed(
+            title="👋 Party Disbanded",
+            description="You have disbanded your party. All members have been removed.",
+            color=discord.Color.green()
+        )
+        await ctx.send(embed=embed)
+
+        # Notify other member if any
+        if len(party_members) > 1:
+            other_member_id = next((m for m in party_members if m != user_id), None)
+            if other_member_id:
+                other_member = ctx.guild.get_member(int(other_member_id))
+                if other_member:
+                    try:
+                        await other_member.send(embed=discord.Embed(
+                            title="💔 Party Disbanded",
+                            description=f"{ctx.author.display_name} has disbanded the party.",
+                            color=discord.Color.red()
+                        ))
+                    except discord.Forbidden: pass # Cannot DM
+    else: # User is a party member
+        parties[owner_id]["members"].remove(user_id)
+        del player_party_map[user_id]
+
+        embed = discord.Embed(
+            title="🚶‍♂️ Left Party",
+            description=f"You have left the party owned by {ctx.guild.get_member(int(owner_id)).display_name}.",
+            color=discord.Color.green()
+        )
+        await ctx.send(embed=embed)
+
+        # Notify owner
+        owner_member = ctx.guild.get_member(int(owner_id))
+        if owner_member:
+            try:
+                await owner_member.send(embed=discord.Embed(
+                    title="Party Member Left",
+                    description=f"{ctx.author.display_name} has left your party.",
+                    color=discord.Color.orange()
+                ))
+            except discord.Forbidden: pass # Cannot DM
+
+@bot.command(name='pwarp')
+async def party_warp(ctx):
+    """
+    (Party Owner) Warps your party members to your current voice channel.
+    Usage: =pwarp
+    """
+    user_id = str(ctx.author.id)
+
+    if user_id not in parties or player_party_map.get(user_id) != user_id:
+        embed = discord.Embed(
+            title="❌ Not a Party Owner",
+            description="You must be a party owner to use this command.",
+            color=discord.Color.red()
+        )
+        return await ctx.send(embed=embed)
+
+    if not ctx.author.voice or not ctx.author.voice.channel:
+        embed = discord.Embed(
+            title="❌ Not in a Voice Channel",
+            description="You must be in a voice channel to warp your party members.",
+            color=discord.Color.red()
+        )
+        return await ctx.send(embed=embed)
+
+    target_vc = ctx.author.voice.channel
+    party_info = parties[user_id]
+    
+    warped_members = []
+    failed_members = []
+
+    for member_id in party_info["members"]:
+        if member_id == user_id: continue # Skip owner
+
+        member = ctx.guild.get_member(int(member_id))
+        if member and member.voice and member.voice.channel != target_vc:
+            try:
+                await member.move_to(target_vc, reason=f"Party warp by {ctx.author.display_name}")
+                warped_members.append(member.display_name)
+            except discord.Forbidden:
+                failed_members.append(f"{member.display_name} (No permission)")
+            except Exception as e:
+                failed_members.append(f"{member.display_name} ({e})")
+        elif member and member.voice and member.voice.channel == target_vc:
+            warped_members.append(f"{member.display_name} (already there)")
+        elif member:
+            failed_members.append(f"{member.display_name} (Not in VC)")
+        else:
+            failed_members.append(f"Unknown User ({member_id})")
+
+    if warped_members or failed_members:
+        description = f"Attempted to warp party members to {target_vc.mention}.\n\n"
+        if warped_members:
+            description += "**Warped/Already There:**\n" + "\n".join(warped_members) + "\n"
+        if failed_members:
+            description += "**Failed to Warp:**\n" + "\n".join(failed_members)
+
+        embed = discord.Embed(
+            title="🚀 Party Warp Results",
+            description=description,
+            color=discord.Color.blue()
+        )
+        await ctx.send(embed=embed)
+    else:
+        embed = discord.Embed(
+            title="ℹ️ Party Warp",
+            description="No party members to warp, or all are already in your VC.",
+            color=discord.Color.blue()
+        )
+        await ctx.send(embed=embed)
+
+@party.command(name='status')
+async def party_status(ctx):
+    """
+    Displays information about your current party.
+    """
+    user_id = str(ctx.author.id)
+
+    if user_id not in player_party_map:
+        embed = discord.Embed(
+            title="❌ Not in a Party",
+            description="You are not currently in a party.",
+            color=discord.Color.red()
+        )
+        return await ctx.send(embed=embed)
+
+    owner_id = player_party_map[user_id]
+    party_info = parties.get(owner_id)
+
+    if not party_info:
+        embed = discord.Embed(
+            title="❌ Party Not Found",
+            description="Could not find information for your party. It might have been disbanded.",
+            color=discord.Color.red()
+        )
+        return await ctx.send(embed=embed)
+
+    owner_member = ctx.guild.get_member(int(owner_id))
+    owner_display_name = owner_member.display_name if owner_member else f"Unknown User ({owner_id})"
+
+    member_names = []
+    for member_id in party_info["members"]:
+        member = ctx.guild.get_member(int(member_id))
+        if member:
+            member_names.append(member.display_name)
+        else:
+            member_names.append(f"Unknown User ({member_id})")
+    
+    pending_invites_str = ""
+    if party_info["invite_pending"]:
+        pending_members = []
+        for invited_id, timestamp in party_info["invite_pending"].items():
+            invited_member = ctx.guild.get_member(int(invited_id))
+            if invited_member:
+                pending_members.append(invited_member.display_name)
+        if pending_members:
+            pending_invites_str = "\n**Pending Invites:**\n" + "\n".join(pending_members)
+
+    embed = discord.Embed(
+        title="🎉 Your Party Status",
+        description=f"**Owner:** {owner_display_name}\n"
+                    f"**Members:**\n" + "\n".join(member_names) + pending_invites_str,
+        color=discord.Color.blue()
+    )
+    embed.set_footer(text="Powered by asrbw.net")
+    await ctx.send(embed=embed)
 
 
 # --- Run the Bot ---
