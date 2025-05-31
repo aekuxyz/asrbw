@@ -14,8 +14,8 @@ import uuid
 from collections import defaultdict
 import string
 import re
-import os # For file operations (game counter)
-from typing import Union # Correct import for Union type hint
+import os
+from typing import Union
 
 # --- Configuration Section ---
 # IMPORTANT: Replace these placeholders with your actual values.
@@ -28,73 +28,74 @@ DISCORD_BOT_TOKEN = 'YOUR_DISCORD_BOT_TOKEN_HERE'
 MYSQL_HOST = "localhost"
 MYSQL_PORT = 3306
 MYSQL_DATABASE = "asrbw_db" # Ensure this database is created and user has access
-MYSQL_USER = "asrbw_user"
-MYSQL_PASSWORD = "your_mysql_password"
+MYSQL_USER = "asrbw-user"
+MYSQL_PASSWORD = "Ahmed7644"
 
 # Discord Role IDs (GET THESE BY ENABLING DEVELOPER MODE IN DISCORD AND RIGHT-CLICKING ROLES)
-MUTED_ROLE_ID = 123456789012345678 # Example ID: Create this role and deny it permissions in all channels
-BANNED_ROLE_ID = 123456789012345678 # Example ID: For queue bans (if implemented)
-FROZEN_ROLE_ID = 123456789012345678 # Example ID: For screenshare (if implemented)
-PPP_MANAGER_ROLE_ID = 123456789012345678 # Role allowed to start PPP polls
-HIGHEST_ADMIN_ROLE_ID = 123456789012345678 # Role that bypasses channel restrictions (e.g., Server Owner, Head Admin)
-SCREENSHARER_ROLE_ID = 123456789012345678 # Role for screensharers (NOT general staff)
+MUTED_ROLE_ID = 1377686663777751051 # Example ID: Create this role and deny it permissions in all channels
+BANNED_ROLE_ID = 1377667120103428238  # Example ID: For queue bans (if implemented)
+FROZEN_ROLE_ID = 1377610292787150949  # Example ID: For screenshare (if implemented)
+PPP_MANAGER_ROLE_ID = 1377664813622366289 # Role allowed to start PPP polls
+HIGHEST_ADMIN_ROLE_ID = 1377665556446187651 # Role that bypasses channel restrictions (e.g., Server Owner, Head Admin)
+SCREENSHARER_ROLE_ID = 1377610245333057566 # Role for screensharers (NOT general staff)
 
 # New: Role for all registered users
-REGISTERED_ROLE_ID = 123456789012345678 # Example ID: Role assigned upon successful registration
+REGISTERED_ROLE_ID = 1376585406249959524 # Example ID: Role assigned upon successful registration
 
 # New: ELO Rank Role IDs (Create these roles in your Discord server)
-IRON_ROLE_ID = 123456789012345678
-BRONZE_ROLE_ID = 123456789012345678
-SILVER_ROLE_ID = 123456789012345678
-GOLD_ROLE_ID = 123456789012345678
-TOPAZ_ROLE_ID = 123456789012345678
-PLATINUM_ROLE_ID = 123456789012345678
+IRON_ROLE_ID = 1376879684519727114
+BRONZE_ROLE_ID = 1376879728455319593
+SILVER_ROLE_ID = 1376879758243139634
+GOLD_ROLE_ID = 1376879783991967804
+TOPAZ_ROLE_ID = 1376879826669015080
+PLATINUM_ROLE_ID = 1376879895262531664
 
 # Comprehensive list of roles considered "staff" for moderation commands
 MODERATION_ROLES_IDS = [
     HIGHEST_ADMIN_ROLE_ID, # The highest admin role
-    123456789012345678, # Example: Moderator Role ID
-    123456789012345678, # Example: Administrator Role ID
-    123456789012345678  # Example: Uito Role ID (newly added concept)
+    1376585289874538497, # Example: Moderator Role ID
+    1376585256991330516, # Example: Administrator Role ID
+    13765852049231094168  # Example: Uito Role ID (newly added concept)
 ]
 
 # Roles that can vote on strike polls (PUPS, PUGS, PREMIUM)
 VOTER_ROLES_IDS = [
-    123456789012345678, # PUPS Role ID
-    123456789012345678, # PUGS Role ID
-    123456789012345678  # PREMIUM Role ID
+    1377332676628975708, # PUPS Role ID
+    1377332728428625950, # PUGS Role ID
+    1377332777829142659  # PREMIUM Role ID
 ]
 
 # Discord Channel IDs
-GAME_LOGS_CHANNEL_ID = 123456789012345678
-TICKET_LOGS_CHANNEL_ID = 123456789012345678
-ALERTS_CHANNEL_ID = 123456789012345678
-STRIKE_LOGS_CHANNEL_ID = 123456789012345678 # This channel will now also be used for mute/ban logs
-SCREENSHARE_LOGS_CHANNEL_ID = 123456789012345678
-GAMES_RESULTS_CHANNEL_ID = 123456789012345678 # New: Channel to post completed game results images
+GAME_LOGS_CHANNEL_ID = 1377611419234865152
+TICKET_LOGS_CHANNEL_ID = 1377617800150913126
+ALERTS_CHANNEL_ID = 1377353846581366904
+STRIKE_LOGS_CHANNEL_ID = 1377355415284875425 # This channel will now also be used for mute/ban logs
+SCREENSHARE_LOGS_CHANNEL_ID = 1377688164923343072
+GAMES_RESULTS_CHANNEL_ID = 1377353788226011246 # New: Channel to post completed game results images
 
 # Specific Channel IDs for Commands (for restrictions)
-REGISTER_CHANNEL_ID = 123456789012345678 # Channel where =register can ONLY be used
-STRIKE_REQUEST_CHANNEL_ID = 123456789012345678 # Channel where =requeststrike can be used
-POLL_CHANNEL_ID = 123456789012345678 # Channel where =poll can be used
-TICKET_CHANNEL_ID = 123456789012345678 # Channel where =ticket command is used to create tickets
-STAFF_UPDATE_CHANNEL_ID = 123456789012345678 # Channel to log staff role changes
+REGISTER_CHANNEL_ID = 13768793955741245448 # Channel where =register can ONLY be used
+STRIKE_REQUEST_CHANNEL_ID = 1377351296868417647 # Channel where =requeststrike can be used
+POLL_CHANNEL_ID = 1378388708205527110 # Channel where =poll can be used
+TICKET_CHANNEL_ID = 1377617914177392640 # Channel where =ticket command is used to create tickets
+STAFF_UPDATE_CHANNEL_ID = 1377306838793453578 # Channel to log staff role changes
 
 # Queue Voice Channel IDs (where players queue up)
-QUEUE_3V3_VOICE_CHANNEL_ID = 123456789012345678 # Players join this VC for 3v3 queue
-QUEUE_4V4_VOICE_CHANNEL_ID = 123456789012345678 # Players join this VC for 4v4 queue
-PPP_3V3_VOICE_CHANNEL_ID = 123456789012345678 # New: Voice channel for 3v3 PPP queue
-PPP_4V4_VOICE_CHANNEL_ID = 123456789012345678 # New: Voice channel for 4v4 PPP queue
+QUEUE_3V3_VOICE_CHANNEL_ID = 1377307263580242022 # Players join this VC for 3v3 queue
+QUEUE_4V4_VOICE_CHANNEL_ID = 1377307337294872670 # Players join this VC for 4v4 queue
+PPP_3V3_VOICE_CHANNEL_ID = 1377307391267307702 # New: Voice channel for 3v3 PPP queue
+PPP_4V4_VOICE_CHANNEL_ID = 1377307437656178836 # New: Voice channel for 4v4 PPP queue
 
 
 # Discord Category IDs
-TICKET_CATEGORY_ID = 123456789012345678
-SCREENSHARE_CATEGORY_ID = 123456789012345678
-GAME_CATEGORY_ID = 123456789012345678 # Text channels for games will be here
-GAME_VOICE_CATEGORY_ID = 123456789012345678 # New: Dedicated category for game voice channels
+TICKET_CATEGORY_ID = 1378238886056169533
+SCREENSHARE_CATEGORY_ID = 1378239020311777361
+GAME_CATEGORY_ID = 1377351978547679232 # Text channels for games will be here
+GAME_VOICE_CATEGORY_ID = 1377352366038454344 # New: Dedicated category for game voice channels
+STRIKE_REQUEST_CATEGORY_ID = 1378389076503171083 # NEW: Category for strike request channels
 
 # Main Discord Server ID (Crucial for nickname updates and member fetching)
-MAIN_GUILD_ID = 123456789012345678
+MAIN_GUILD_ID = 1376550455714386031
 
 # ELO Configuration (Unified ELO)
 DEFAULT_ELO = 0.0 # Changed from 1000.0 to 0.0
@@ -125,7 +126,7 @@ AVAILABLE_MAPS = ["Ares", "Dragon's Nest", "Playgrounds"]
 # You might need to place an actual .ttf file like 'arial.ttf' in the same directory as your bot script.
 FONT_PATH = "arial.ttf" 
 
-# Registration Code Expiry
+# Registration Code Expiry (not used for in-channel registration, but kept for reference if needed)
 REGISTRATION_CODE_EXPIRY_MINUTES = 5
 
 # File to store the last game number
@@ -139,8 +140,11 @@ queues = {
     "ppp_4v4": []  # Intended for PPP users only
 }
 active_games = {} # Stores game_id -> {text_channel_id, voice_channel_lobby_id, team_a_vc_id, team_b_vc_id, players: {discord_id: team}}
-active_tickets = {}
-active_screenshares = {}
+active_tickets = {} # Stores channel_id -> {type, creator_id, created_at, ...}
+active_screenshares = {} # Stores channel_id -> {target_id, requester_id, created_at, ...}
+
+# Strike Polls: {message_id: {"target_id": str, "requester_id": str, "reason": str, "votes_yes": int, "votes_no": int, "voters": {user_id: bool}}}
+active_strike_polls = {}
 
 # Party System: {owner_id: {"members": [member_id], "invite_pending": {invited_id: timestamp}}}
 parties = defaultdict(lambda: {"members": [], "invite_pending": {}})
@@ -185,7 +189,7 @@ async def get_mysql_connection():
         return None
 
 async def ensure_db_connection():
-    """Ensures the 'accounts' table exists in the database with necessary columns."""
+    """Ensures the 'accounts' table and 'punishments' table exist in the database with necessary columns."""
     conn = None
     try:
         conn = await get_mysql_connection()
@@ -216,53 +220,55 @@ async def ensure_db_connection():
                         banned_until BIGINT NULL    -- For temporary bans
                     )
                 """)
+                # Create punishments table if it doesn't exist (NEW)
+                await cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS punishments (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        user_id VARCHAR(255) NOT NULL,
+                        punishment_type VARCHAR(50) NOT NULL, -- 'strike', 'mute', 'ban'
+                        moderator_id VARCHAR(255) NOT NULL,
+                        reason TEXT,
+                        timestamp BIGINT NOT NULL, -- UNIX timestamp
+                        duration VARCHAR(50) NULL, -- '30m', '1h', 'permanent', NULL
+                        KEY user_id_idx (user_id)
+                    )
+                """)
+
                 # Drop old columns if they exist (for migration)
                 try:
                     await cursor.execute("ALTER TABLE accounts DROP COLUMN IF EXISTS elo_3v3")
                     print("Dropped 'elo_3v3' column.")
                 except aiomysql.Error as err:
-                    # This error handling is for when the column doesn't exist, which is fine
-                    if "Unknown column 'elo_3v3'" not in str(err):
-                        print(f"Error dropping elo_3v3: {err}")
-                        await log_alert(f"Error dropping elo_3v3: {err}")
+                    if "Unknown column 'elo_3v3'" not in str(err): print(f"Error dropping elo_3v3: {err}")
                 try:
                     await cursor.execute("ALTER TABLE accounts DROP COLUMN IF EXISTS elo_4v4")
                     print("Dropped 'elo_4v4' column.")
                 except aiomysql.Error as err:
-                    if "Unknown column 'elo_4v4'" not in str(err):
-                        print(f"Error dropping elo_4v4: {err}")
-                        await log_alert(f"Error dropping elo_4v4: {err}")
+                    if "Unknown column 'elo_4v4'" not in str(err): print(f"Error dropping elo_4v4: {err}")
                 try:
                     await cursor.execute("ALTER TABLE accounts DROP COLUMN IF EXISTS show_elo_prefix")
                     print("Dropped 'show_elo_prefix' column.")
                 except aiomysql.Error as err:
-                    if "Unknown column 'show_elo_prefix'" not in str(err):
-                        print(f"Error dropping show_elo_prefix: {err}")
-                        await log_alert(f"Error dropping show_elo_prefix: {err}")
+                    if "Unknown column 'show_elo_prefix'" not in str(err): print(f"Error dropping show_elo_prefix: {err}")
                 
                 # Add new columns if they don't exist (using IF NOT EXISTS for safety)
                 try:
                     await cursor.execute("ALTER TABLE accounts ADD COLUMN IF NOT EXISTS muted_until BIGINT NULL")
                     print("Added 'muted_until' column.")
                 except aiomysql.Error as err:
-                    if "Duplicate column name 'muted_until'" not in str(err):
-                        print(f"Error adding muted_until: {err}")
-                        await log_alert(f"Error adding muted_until: {err}")
+                    if "Duplicate column name 'muted_until'" not in str(err): print(f"Error adding muted_until: {err}")
                 try:
                     await cursor.execute("ALTER TABLE accounts ADD COLUMN IF NOT EXISTS banned_until BIGINT NULL")
                     print("Added 'banned_until' column.")
                 except aiomysql.Error as err:
-                    if "Duplicate column name 'banned_until'" not in str(err):
-                        print(f"Error adding banned_until: {err}")
-                        await log_alert(f"Error adding banned_until: {err}")
+                    if "Duplicate column name 'banned_until'" not in str(err): print(f"Error adding banned_until: {err}")
 
-            # No explicit conn.commit() needed if autocommit=True in connect
-            print("MySQL 'accounts' table ensured and updated.")
+            print("MySQL 'accounts' and 'punishments' tables ensured and updated.")
         else:
-            print("Could not establish MySQL connection to ensure 'accounts' table.")
+            print("Could not establish MySQL connection to ensure tables.")
     except aiomysql.Error as err:
-        print(f"Error ensuring 'accounts' table: {err}")
-        await log_alert(f"Error ensuring 'accounts' table: {err}")
+        print(f"Error ensuring tables: {err}")
+        await log_alert(f"Error ensuring tables: {err}")
     finally:
         if conn:
             conn.close() # Close the connection
@@ -323,7 +329,7 @@ async def get_player_stats_from_db(discord_id: str):
         (discord_id,), fetchone=True
     )
 
-async def register_user_in_db(discord_id: str, minecraft_uuid: str, minecraft_username: str):
+async def register_user_in_db(discord_id: str, minecraft_uuid: str, minecraft_username: str, initial_elo: float = DEFAULT_ELO):
     """Registers a user in the database or updates their UUID if already registered."""
     try:
         existing_account = await execute_query(
@@ -338,10 +344,10 @@ async def register_user_in_db(discord_id: str, minecraft_uuid: str, minecraft_us
             print(f"Updated Discord ID {discord_id} with Minecraft UUID {minecraft_uuid} and username {minecraft_username}.")
         else:
             await execute_query(
-                "INSERT INTO accounts (discord_id, minecraft_uuid, minecraft_username) VALUES (%s, %s, %s)",
-                (discord_id, minecraft_uuid, minecraft_username)
+                "INSERT INTO accounts (discord_id, minecraft_uuid, minecraft_username, elo) VALUES (%s, %s, %s, %s)",
+                (discord_id, minecraft_uuid, minecraft_username, initial_elo)
             )
-            print(f"Registered new user: Discord ID {discord_id}, Minecraft UUID {minecraft_uuid}, Username {minecraft_username}.")
+            print(f"Registered new user: Discord ID {discord_id}, Minecraft UUID {minecraft_uuid}, Username {minecraft_username}, Initial ELO: {initial_elo}.")
 
         guild = bot.get_guild(MAIN_GUILD_ID)
         if guild:
@@ -357,8 +363,8 @@ async def register_user_in_db(discord_id: str, minecraft_uuid: str, minecraft_us
                         print(f"Bot lacks permission to assign {registered_role.name} to {member.display_name}.")
                         await log_alert(f"Bot lacks permission to assign {registered_role.name} to {member.display_name}.")
                 
-                # Assign initial Iron rank role and update nickname based on default ELO
-                await update_player_rank_role(member, DEFAULT_ELO)
+                # Assign initial rank role and update nickname based on ELO
+                await update_player_rank_role(member, initial_elo)
                 await update_discord_nickname(member) # Call with member directly
             else:
                 print(f"Member with Discord ID {discord_id} not found in guild {MAIN_GUILD_ID} during registration.")
@@ -425,41 +431,6 @@ async def update_player_stats_in_db(discord_id: str, elo: float, wins: int, loss
         else:
             print(f"Could not find guild with ID {MAIN_GUILD_ID} to update nickname/roles after ELO change.")
     return success
-
-async def generate_registration_code():
-    """Generates a unique alphanumeric registration code."""
-    while True:
-        code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
-        existing_code = await execute_query(
-            "SELECT discord_id FROM accounts WHERE registration_code = %s", (code,), fetchone=True
-        )
-        if not existing_code:
-            return code
-
-async def store_registration_code(discord_id: str, code: str):
-    """Stores a registration code for a Discord user."""
-    timestamp = int(datetime.datetime.now(datetime.timezone.utc).timestamp())
-    await execute_query(
-        """
-        INSERT INTO accounts (discord_id, registration_code, registration_timestamp)
-        VALUES (%s, %s, %s)
-        ON DUPLICATE KEY UPDATE registration_code = %s, registration_timestamp = %s
-        """,
-        (discord_id, code, timestamp, code, timestamp)
-    )
-
-async def check_registration_code(discord_id: str, code: str):
-    """Checks if the provided registration code is valid and not expired."""
-    result = await execute_query(
-        "SELECT registration_code, registration_timestamp FROM accounts WHERE discord_id = %s",
-        (discord_id,), fetchone=True
-    )
-    if result and result['registration_code'] == code:
-        stored_timestamp = result['registration_timestamp']
-        current_timestamp = int(datetime.datetime.now(datetime.timezone.utc).timestamp())
-        if (current_timestamp - stored_timestamp) < (REGISTRATION_CODE_EXPIRY_MINUTES * 60):
-            return True
-    return False
 
 # --- ELO and Rank Calculation ---
 def get_rank_from_elo(elo: float) -> str:
@@ -600,37 +571,54 @@ async def log_game_event(message: str):
     else:
         print(f"Game logs channel not found. Message: {message}")
 
-async def log_ticket_event(message: str):
-    """Sends a ticket event message to the configured ticket logs channel."""
+async def log_ticket_event(title: str, description: str, color: discord.Color, fields: list = None, thumbnail_url: str = None):
+    """Sends a ticket event embed to the configured ticket logs channel."""
     channel = bot.get_channel(TICKET_LOGS_CHANNEL_ID)
     if channel:
-        await channel.send(message)
+        embed = discord.Embed(title=title, description=description, color=color, timestamp=datetime.datetime.utcnow())
+        if thumbnail_url: embed.set_thumbnail(url=thumbnail_url)
+        if fields:
+            for name, value, inline in fields: embed.add_field(name=name, value=value, inline=inline)
+        await channel.send(embed=embed)
     else:
-        print(f"Ticket logs channel not found. Message: {message}")
+        print(f"Ticket logs channel not found. Title: {title}, Description: {description}")
 
-async def log_strike_event(message: str):
-    """Sends a strike event message to the configured strike logs channel."""
+async def log_moderation_action(title: str, description: str, color: discord.Color, fields: list = None, thumbnail_url: str = None):
+    """Sends a moderation action embed to the configured strike logs channel (unified)."""
     channel = bot.get_channel(STRIKE_LOGS_CHANNEL_ID)
     if channel:
-        await channel.send(message)
+        embed = discord.Embed(title=title, description=description, color=color, timestamp=datetime.datetime.utcnow())
+        if thumbnail_url: embed.set_thumbnail(url=thumbnail_url)
+        if fields:
+            for name, value, inline in fields: embed.add_field(name=name, value=value, inline=inline)
+        await channel.send(embed=embed)
     else:
-        print(f"Strike logs channel not found. Message: {message}")
+        print(f"Strike logs channel not found. Title: {title}, Description: {description}")
 
-async def log_screenshare_event(message: str):
-    """Sends a screenshare event message to the configured screenshare logs channel."""
+async def log_screenshare_event(title: str, description: str, color: discord.Color, fields: list = None, thumbnail_url: str = None):
+    """Sends a screenshare event embed to the configured screenshare logs channel."""
     channel = bot.get_channel(SCREENSHARE_LOGS_CHANNEL_ID)
     if channel:
-        await channel.send(message)
+        embed = discord.Embed(title=title, description=description, color=color, timestamp=datetime.datetime.utcnow())
+        if thumbnail_url: embed.set_thumbnail(url=thumbnail_url)
+        if fields:
+            for name, value, inline in fields: embed.add_field(name=name, value=value, inline=inline)
+        await channel.send(embed=embed)
     else:
-        print(f"Screenshare logs channel not found. Message: {message}")
+        print(f"Screenshare logs channel not found. Title: {title}, Description: {description}")
 
-async def log_staff_update(message: str):
-    """Sends a staff update message to the configured staff update channel."""
+async def log_staff_update_embed(title: str, description: str, color: discord.Color, fields: list = None, thumbnail_url: str = None):
+    """Sends a staff update embed to the configured staff update channel."""
     channel = bot.get_channel(STAFF_UPDATE_CHANNEL_ID)
     if channel:
-        await channel.send(f"👥 **STAFF UPDATE:** {message}")
+        embed = discord.Embed(title=title, description=description, color=color, timestamp=datetime.datetime.utcnow())
+        if thumbnail_url: embed.set_thumbnail(url=thumbnail_url)
+        if fields:
+            for name, value, inline in fields: embed.add_field(name=name, value=value, inline=inline)
+        await channel.send(embed=embed)
     else:
-        print(f"Staff update channel not found. Message: {message}")
+        print(f"Staff update channel not found. Title: {title}, Description: {description}")
+
 
 # --- Role Hierarchy Check ---
 async def is_above_highest_admin_role(member: discord.Member) -> bool:
@@ -672,6 +660,8 @@ def parse_duration(duration_str: str) -> datetime.timedelta | None:
             return datetime.timedelta(days=days)
         except ValueError:
             return None
+    elif duration_str.lower() == 'perm':
+        return datetime.timedelta(days=365 * 100) # Effectively permanent for a long time
     else:
         return None
 
@@ -721,14 +711,18 @@ async def check_temp_moderations_task():
             if member and muted_role and muted_role in member.roles:
                 try:
                     await member.remove_roles(muted_role, reason="Temporary mute expired")
-                    # Log to strike logs channel for moderation actions
-                    await log_strike_event(f"🔊 {member.display_name} has been automatically unmuted (duration expired).")
+                    await log_moderation_action(
+                        "🔊 User Unmuted (Auto)",
+                        f"{member.display_name} (`{member.id}`) has been automatically unmuted (duration expired).",
+                        discord.Color.green(),
+                        thumbnail_url=member.display_avatar.url
+                    )
                     print(f"Automatically unmuted {member.display_name}")
                 except discord.Forbidden:
                     await log_alert(f"Bot lacks permission to unmute {member.display_name}. Manual intervention needed.")
                 except Exception as e:
                     await log_alert(f"Error during auto-unmute for {member.display_name}: {e}")
-            await remove_temp_moderation_mysql(discord_id, 'mute')
+            await remove_temp_moderation_mysql(discord_id, 'muted')
 
     # Check for expired bans (now removes BANNED_ROLE_ID instead of server unban)
     expired_bans = await execute_query(
@@ -744,14 +738,18 @@ async def check_temp_moderations_task():
             if member and banned_role and banned_role in member.roles:
                 try:
                     await member.remove_roles(banned_role, reason="Temporary ban role expired")
-                    # Log to strike logs channel for moderation actions
-                    await log_strike_event(f"🔓 {member.display_name} has been automatically unbanned (role removed, duration expired).")
+                    await log_moderation_action(
+                        "🔓 User Unbanned (Auto)",
+                        f"{member.display_name} (`{member.id}`) has been automatically unbanned (role removed, duration expired).",
+                        discord.Color.green(),
+                        thumbnail_url=member.display_avatar.url
+                    )
                     print(f"Automatically unbanned {member.display_name} (role removed)")
                 except discord.Forbidden:
                     await log_alert(f"Bot lacks permission to remove ban role from {member.display_name}. Manual intervention needed.")
                 except Exception as e:
                     await log_alert(f"Error during auto-unban role removal for {member.display_name}: {e}")
-            await remove_temp_moderation_mysql(discord_id, 'ban')
+            await remove_temp_moderation_mysql(discord_id, 'banned')
 
 # --- Voice Channel Queue Monitoring Task ---
 @tasks.loop(seconds=10) # Check every 10 seconds
@@ -834,6 +832,12 @@ async def create_screenshare_channel(guild: discord.Guild, requester: discord.Me
     else:
         await log_alert(f"Screensharer role (ID: {SCREENSHARER_ROLE_ID}) not found. Screenshare channel visibility might be incorrect.")
 
+    for role_id in MODERATION_ROLES_IDS: # Staff (moderation) roles can see SS channels
+        role = guild.get_role(role_id)
+        if role:
+            overwrites[role] = discord.PermissionOverwrite(view_channel=True, send_messages=True)
+
+
     channel_name = f"ss-{target_player.name.lower().replace(' ', '-')}-{uuid.uuid4().hex[:4]}"
     try:
         screenshare_category = guild.get_channel(SCREENSHARE_CATEGORY_ID)
@@ -872,6 +876,21 @@ async def create_screenshare_channel(guild: discord.Guild, requester: discord.Me
         if screensharer_role:
             mentions.append(screensharer_role.mention)
         await channel.send(f"{' '.join(mentions)}", embed=embed)
+
+        # Store active screenshare for =ssclose
+        active_screenshares[channel.id] = {
+            "target_id": str(target_player.id),
+            "requester_id": str(requester.id),
+            "created_at": datetime.datetime.utcnow(),
+            "reason": reason
+        }
+        await log_screenshare_event(
+            "Screenshare Request Created",
+            f"Screenshare request for {target_player.mention} (`{target_player.id}`) by {requester.mention} (`{requester.id}`).",
+            discord.Color.orange(),
+            fields=[("Channel", channel.mention, True), ("Reason", reason, False)],
+            thumbnail_url=target_player.display_avatar.url
+        )
         return channel
     except discord.Forbidden:
         await log_alert(f"Bot lacks permissions to create screenshare channel in category {screenshare_category.name}. Ensure 'Manage Channels' permission is granted.")
@@ -881,7 +900,7 @@ async def create_screenshare_channel(guild: discord.Guild, requester: discord.Me
         print(f"Error creating screenshare channel: {e}")
         return None
 
-async def create_strike_channel(guild: discord.Guild, requester: discord.Member, target_player: discord.Member, reason: str, attachments: list[discord.Attachment]):
+async def create_strike_request_channel(guild: discord.Guild, requester: discord.Member, target_player: discord.Member, reason: str, attachments: list[discord.Attachment]):
     """
     Creates a private text channel for a strike request.
     Only visible to requester, target, and moderation roles.
@@ -896,21 +915,27 @@ async def create_strike_channel(guild: discord.Guild, requester: discord.Member,
         role = guild.get_role(role_id)
         if role:
             overwrites[role] = discord.PermissionOverwrite(view_channel=True, send_messages=True)
+    
+    # Allow voter roles to see the channel for the poll
+    for role_id in VOTER_ROLES_IDS:
+        role = guild.get_role(role_id)
+        if role:
+            overwrites[role] = discord.PermissionOverwrite(view_channel=True, send_messages=False) # Can see, but not chat
 
-    channel_name = f"strike-{target_player.name.lower().replace(' ', '-')}-{uuid.uuid4().hex[:4]}"
+    channel_name = f"strike-req-{target_player.name.lower().replace(' ', '-')}-{uuid.uuid4().hex[:4]}"
     try:
-        ticket_category = guild.get_channel(TICKET_CATEGORY_ID)
-        if not ticket_category:
-            await log_alert(f"Ticket category (ID: {TICKET_CATEGORY_ID}) not found for strike channel creation.")
+        strike_request_category = guild.get_channel(STRIKE_REQUEST_CATEGORY_ID)
+        if not strike_request_category:
+            await log_alert(f"Strike Request category (ID: {STRIKE_REQUEST_CATEGORY_ID}) not found for strike request channel creation.")
             return None
 
         channel = await guild.create_text_channel(
             channel_name,
-            category=ticket_category,
+            category=strike_request_category,
             overwrites=overwrites,
             topic=f"Strike request for {target_player.display_name} requested by {requester.display_name}. Reason: {reason}"
         )
-        print(f"Created strike channel: {channel.name}")
+        print(f"Created strike request channel: {channel.name}")
 
         embed = discord.Embed(
             title="🚨 Strike Request",
@@ -929,21 +954,49 @@ async def create_strike_channel(guild: discord.Guild, requester: discord.Member,
         else:
             embed.add_field(name="Proof", value="No image proof provided.", inline=False)
 
-        embed.set_footer(text=f"Strike ID: {uuid.uuid4().hex[:8]}")
+        embed.set_footer(text=f"Strike Request ID: {uuid.uuid4().hex[:8]}")
 
         mentions = [target_player.mention, requester.mention]
         for role_id in MODERATION_ROLES_IDS:
             role = guild.get_role(role_id)
             if role:
                 mentions.append(role.mention)
-        await channel.send(f"{' '.join(mentions)}", embed=embed)
+        
+        # Add a note for voters
+        voter_roles_mentions = [guild.get_role(r_id).mention for r_id in VOTER_ROLES_IDS if guild.get_role(r_id)]
+        if voter_roles_mentions:
+            embed.add_field(name="Voting", value=f"Please vote on this request by reacting with ✅ (Approve) or ❌ (Deny).\n"
+                                                  f"Only {', '.join(voter_roles_mentions)} can vote.", inline=False)
+
+        poll_message = await channel.send(f"{' '.join(mentions)}", embed=embed)
+        await poll_message.add_reaction("✅")
+        await poll_message.add_reaction("❌")
+
+        # Store poll data in memory
+        active_strike_polls[poll_message.id] = {
+            "channel_id": channel.id,
+            "target_id": str(target_player.id),
+            "requester_id": str(requester.id),
+            "reason": reason,
+            "votes_yes": 0,
+            "votes_no": 0,
+            "voters": {} # {user_id: True/False (for yes/no)}
+        }
+
+        await log_moderation_action( # Log to strike logs channel as a request
+            "Strike Request Initiated",
+            f"Strike request for {target_player.mention} (`{target_player.id}`) by {requester.mention} (`{requester.id}`).",
+            discord.Color.purple(),
+            fields=[("Channel", channel.mention, True), ("Reason", reason, False)],
+            thumbnail_url=target_player.display_avatar.url
+        )
         return channel
     except discord.Forbidden:
-        await log_alert(f"Bot lacks permissions to create strike channel in category {ticket_category.name}. Ensure 'Manage Channels' permission is granted.")
+        await log_alert(f"Bot lacks permissions to create strike request channel in category {strike_request_category.name}. Ensure 'Manage Channels' permission is granted.")
         return None
     except Exception as e:
-        await log_alert(f"Error creating strike channel: {e}")
-        print(f"Error creating strike channel: {e}")
+        await log_alert(f"Error creating strike request channel: {e}")
+        print(f"Error creating strike request channel: {e}")
         return None
 
 async def create_game_channels(guild: discord.Guild, players: list[discord.Member], game_type: str, map_name: str, game_number: int):
@@ -1452,13 +1505,129 @@ async def on_member_update(before, after):
 
     for role in added_roles:
         if role in staff_roles_for_logging:
-            await log_staff_update(f"{after.mention} was granted the **{role.name}** role.")
+            await log_staff_update_embed(
+                "👥 Staff Role Granted",
+                f"{after.mention} was granted the **{role.name}** role.",
+                discord.Color.blue(),
+                thumbnail_url=after.display_avatar.url
+            )
             print(f"Logged staff role added: {after.display_name} got {role.name}")
     
     for role in removed_roles:
         if role in staff_roles_for_logging:
-            await log_staff_update(f"{after.mention} had the **{role.name}** role removed.")
+            await log_staff_update_embed(
+                "👥 Staff Role Removed",
+                f"{after.mention} had the **{role.name}** role removed.",
+                discord.Color.red(),
+                thumbnail_url=after.display_avatar.url
+            )
             print(f"Logged staff role removed: {after.display_name} lost {role.name}")
+
+@bot.event
+async def on_raw_reaction_add(payload):
+    """Handles reactions for strike request polls."""
+    if payload.guild_id is None or payload.user_id == bot.user.id:
+        return # Ignore DMs and bot's own reactions
+
+    guild = bot.get_guild(payload.guild_id)
+    if not guild: return
+
+    channel = guild.get_channel(payload.channel_id)
+    if not channel or channel.category_id != STRIKE_REQUEST_CATEGORY_ID:
+        return # Not a strike request channel
+
+    if payload.message_id not in active_strike_polls:
+        return # Not an active poll message
+
+    poll_data = active_strike_polls[payload.message_id]
+    member = guild.get_member(payload.user_id)
+    if not member: return
+
+    # Check if the reactor has a voting role
+    can_vote = any(role.id in VOTER_ROLES_IDS for role in member.roles)
+    if not can_vote:
+        # Optionally remove reaction if not allowed to vote, but this can be spammy
+        try:
+            message = await channel.fetch_message(payload.message_id)
+            await message.remove_reaction(payload.emoji, member)
+            # await channel.send(f"{member.mention}, you do not have permission to vote on this poll.", delete_after=5)
+        except discord.Forbidden: pass
+        except discord.NotFound: pass
+        return
+
+    # Check if user has already voted
+    if str(member.id) in poll_data["voters"]:
+        # User already voted, ignore or inform
+        try:
+            message = await channel.fetch_message(payload.message_id)
+            await message.remove_reaction(payload.emoji, member)
+            # await channel.send(f"{member.mention}, you have already voted on this poll.", delete_after=5)
+        except discord.Forbidden: pass
+        except discord.NotFound: pass
+        return
+
+    emoji_name = payload.emoji.name
+    if emoji_name == "✅":
+        poll_data["votes_yes"] += 1
+        poll_data["voters"][str(member.id)] = True
+        print(f"Vote YES from {member.display_name} for poll {payload.message_id}")
+    elif emoji_name == "❌":
+        poll_data["votes_no"] += 1
+        poll_data["voters"][str(member.id)] = False
+        print(f"Vote NO from {member.display_name} for poll {payload.message_id}")
+    else:
+        # Remove invalid reactions
+        try:
+            message = await channel.fetch_message(payload.message_id)
+            await message.remove_reaction(payload.emoji, member)
+        except discord.Forbidden: pass
+        except discord.NotFound: pass
+
+    # Update the embed to show current vote counts (optional, can be spammy)
+    # This requires fetching the message and editing it.
+    # For now, just print to console.
+
+@bot.event
+async def on_raw_reaction_remove(payload):
+    """Handles reactions being removed from strike request polls."""
+    if payload.guild_id is None or payload.user_id == bot.user.id:
+        return # Ignore DMs and bot's own reactions
+
+    guild = bot.get_guild(payload.guild_id)
+    if not guild: return
+
+    channel = guild.get_channel(payload.channel_id)
+    if not channel or channel.category_id != STRIKE_REQUEST_CATEGORY_ID:
+        return # Not a strike request channel
+
+    if payload.message_id not in active_strike_polls:
+        return # Not an active poll message
+
+    poll_data = active_strike_polls[payload.message_id]
+    member = guild.get_member(payload.user_id)
+    if not member: return
+
+    # Check if the reactor has a voting role (only remove if they were allowed to vote)
+    can_vote = any(role.id in VOTER_ROLES_IDS for role in member.roles)
+    if not can_vote:
+        return
+
+    # Check if user had actually voted before removing
+    if str(member.id) not in poll_data["voters"]:
+        return
+
+    emoji_name = payload.emoji.name
+    if emoji_name == "✅" and poll_data["voters"].get(str(member.id)) is True:
+        poll_data["votes_yes"] = max(0, poll_data["votes_yes"] - 1)
+        del poll_data["voters"][str(member.id)]
+        print(f"Removed YES vote from {member.display_name} for poll {payload.message_id}")
+    elif emoji_name == "❌" and poll_data["voters"].get(str(member.id)) is False:
+        poll_data["votes_no"] = max(0, poll_data["votes_no"] - 1)
+        del poll_data["voters"][str(member.id)]
+        print(f"Removed NO vote from {member.display_name} for poll {payload.message_id}")
+
+    # Update the embed to show current vote counts (optional)
+
 
 # --- Image Generation Functions ---
 async def generate_player_stats_image(player_stats: dict, target_user: discord.Member):
@@ -1685,40 +1854,57 @@ async def register(ctx, minecraft_username: str = None):
         return await ctx.send(embed=embed)
 
     if minecraft_username is None:
-        embed = discord.Embed(
-            title="📝 Missing Username",
-            description="Please provide your Minecraft username. Usage: `=register <Minecraft_Username>`",
-            color=discord.Color.orange()
-        )
-        return await ctx.send(embed=embed)
+        await ctx.send(embed=discord.Embed(
+            title="❓ Missing Argument",
+            description="Please provide your Minecraft username. Usage: `=register <YourIGN>`",
+            color=discord.Color.blue()
+        ))
+        return
 
     discord_id = str(ctx.author.id)
-    code = await generate_registration_code()
-    await store_registration_code(discord_id, code)
-
-    embed = discord.Embed(
-        title="🔗 Minecraft Account Registration",
-        description=f"To link your Discord account with your Minecraft account, please join the ASRBW server (`play.asrbw.net`) and type the following command in chat within **{REGISTRATION_CODE_EXPIRY_MINUTES} minutes**:\n\n"
-                    f"```/register {code}```\n\n"
-                    f"Your Minecraft username will be set to: `{minecraft_username}`. If this is incorrect, please re-run the command with the correct username.",
-        color=discord.Color.blue()
-    )
-    embed.set_footer(text="This code will expire soon. Powered by asrbw.net")
+    
     try:
-        await ctx.author.send(embed=embed)
-        response_embed = discord.Embed(
-            title="📬 Registration Instructions Sent!",
-            description=f"{ctx.author.mention}, I've sent you a DM with instructions to complete your registration!",
-            color=discord.Color.green()
-        )
-        await ctx.send(embed=response_embed)
-    except discord.Forbidden:
+        # Check if already registered
+        existing_account = await get_player_stats_from_db(discord_id)
+        if existing_account and existing_account.get('minecraft_uuid'):
+            embed = discord.Embed(
+                title="❌ Already Registered",
+                description=f"You are already registered as `{existing_account['minecraft_username']}` with ELO `{int(existing_account['elo'])}`.",
+                color=discord.Color.orange()
+            )
+            return await ctx.send(embed=embed)
+
+        # Generate a new UUID for the Minecraft account
+        minecraft_uuid = str(uuid.uuid4())
+
+        # Register/update user in DB
+        success = await register_user_in_db(discord_id, minecraft_uuid, minecraft_username, DEFAULT_ELO)
+
+        if success:
+            response_embed = discord.Embed(
+                title="✅ Registration Successful!",
+                description=f"Welcome, {ctx.author.mention}! Your Minecraft username `{minecraft_username}` has been linked to your Discord account. You start with ELO `{int(DEFAULT_ELO)}`.",
+                color=discord.Color.green()
+            )
+            response_embed.set_footer(text="Your nickname will be updated shortly. Powered by asrbw.net")
+            await ctx.send(embed=response_embed)
+            # Nickname and role update is handled within register_user_in_db
+        else:
+            error_embed = discord.Embed(
+                title="❌ Registration Failed",
+                description="An error occurred during registration. Please try again or contact staff.",
+                color=discord.Color.red()
+            )
+            await ctx.send(embed=error_embed)
+
+    except Exception as e:
         error_embed = discord.Embed(
-            title="❌ DM Failed",
-            description=f"{ctx.author.mention}, I couldn't send you a DM. Please check your privacy settings to allow DMs from server members.",
+            title="⚠️ Error",
+            description=f"An unexpected error occurred: {e}",
             color=discord.Color.red()
         )
         await ctx.send(embed=error_embed)
+        print(f"Error in register command for {ctx.author.display_name}: {e}")
 
 @bot.command(name='unregister')
 @commands.has_any_role(*MODERATION_ROLES_IDS)
@@ -1737,7 +1923,12 @@ async def unregister_command(ctx, member: discord.Member):
             color=discord.Color.green()
         )
         await ctx.send(embed=response_embed)
-        await log_alert(f"Admin {ctx.author.display_name} (`{ctx.author.id}`) unregistered {member.display_name} ({discord_id}).")
+        await log_moderation_action(
+            "User Unregistered",
+            f"Admin {ctx.author.display_name} (`{ctx.author.id}`) unregistered {member.display_name} (`{discord_id}`).",
+            discord.Color.dark_red(),
+            thumbnail_url=member.display_avatar.url
+        )
     else:
         error_embed = discord.Embed(
             title="❌ Unregistration Failed",
@@ -1751,7 +1942,7 @@ async def unregister_command_error(ctx, error):
     if isinstance(error, commands.MissingAnyRole):
         await ctx.send(embed=discord.Embed(title="⛔ Permission Denied", description="You do not have permission to use this command. You need a moderation role.", color=discord.Color.red()))
     elif isinstance(error, commands.MissingRequiredArgument):
-        await ctx.send(embed=discord.Embed(title="❓ Missing Argument", description="Missing arguments. Usage: `=unregister <@member>`", color=discord.Color.orange()))
+        await ctx.send(embed=discord.Embed(title="❓ Missing Argument", description="Please mention the member to unregister. Usage: `=unregister <@member>`", color=discord.Color.blue()))
     elif isinstance(error, commands.MemberNotFound):
         await ctx.send(embed=discord.Embed(title="🔍 Member Not Found", description="Could not find that member. Please mention them properly (e.g., `@Username` or their ID).", color=discord.Color.red()))
     else:
@@ -1817,13 +2008,20 @@ async def stats(ctx, target_user: discord.Member = None):
 async def forceregister(ctx, member: discord.Member, minecraft_username: str):
     """
     (Moderation) Manually registers a Discord user with a Minecraft username.
+    If the user is new, all stats start at 0. If already registered, updates IGN.
     Usage: =forceregister <@member> <Minecraft_Username>
     """
     discord_id = str(member.id)
     try:
-        minecraft_uuid = str(uuid.uuid4()) # Generate a random UUID
+        # Generate a random UUID
+        minecraft_uuid = str(uuid.uuid4())
 
-        success = await register_user_in_db(discord_id, minecraft_uuid, minecraft_username)
+        # Check if user is already registered to determine if stats should be reset (for new registrations)
+        existing_account = await get_player_stats_from_db(discord_id)
+        
+        # If no existing account, register with default ELO (0) and 0 stats
+        # If existing, register_user_in_db will just update username/uuid, keeping existing stats
+        success = await register_user_in_db(discord_id, minecraft_uuid, minecraft_username, DEFAULT_ELO)
 
         if success:
             response_embed = discord.Embed(
@@ -1831,8 +2029,20 @@ async def forceregister(ctx, member: discord.Member, minecraft_username: str):
                 description=f"Successfully force-registered {member.mention} with Minecraft Username: `{minecraft_username}`.",
                 color=discord.Color.green()
             )
+            if not existing_account:
+                response_embed.add_field(name="Initial ELO", value=int(DEFAULT_ELO), inline=True)
+                response_embed.set_footer(text="New registration, stats initialized to 0. Powered by asrbw.net")
+            else:
+                response_embed.set_footer(text="Existing registration updated. Stats preserved. Powered by asrbw.net")
+            
             await ctx.send(embed=response_embed)
-            await log_alert(f"Admin {ctx.author.display_name} (`{ctx.author.id}`) force-registered {member.display_name} ({discord_id}) with Minecraft Username `{minecraft_username}`.")
+            await log_moderation_action(
+                "User Force Registered",
+                f"Admin {ctx.author.display_name} (`{ctx.author.id}`) force-registered {member.display_name} (`{discord_id}`) with Minecraft Username `{minecraft_username}`.",
+                discord.Color.dark_green(),
+                fields=[("Initial ELO", str(int(DEFAULT_ELO)) if not existing_account else "Existing", True)],
+                thumbnail_url=member.display_avatar.url
+            )
         else:
             error_embed = discord.Embed(
                 title="❌ Force Registration Failed",
@@ -1854,7 +2064,7 @@ async def forceregister_error(ctx, error):
     if isinstance(error, commands.MissingAnyRole):
         await ctx.send(embed=discord.Embed(title="⛔ Permission Denied", description="You do not have permission to use this command. You need a moderation role.", color=discord.Color.red()))
     elif isinstance(error, commands.MissingRequiredArgument):
-        await ctx.send(embed=discord.Embed(title="❓ Missing Arguments", description="Missing arguments. Usage: `=forceregister <@member> <Minecraft_Username>`", color=discord.Color.orange()))
+        await ctx.send(embed=discord.Embed(title="❓ Missing Arguments", description="Please provide a member and their Minecraft username. Usage: `=forceregister <@member> <Minecraft_Username>`", color=discord.Color.blue()))
     elif isinstance(error, commands.MemberNotFound):
         await ctx.send(embed=discord.Embed(title="🔍 Member Not Found", description="Could not find that member. Please mention them properly (e.g., `@Username` or their ID).", color=discord.Color.red()))
     else:
@@ -1891,6 +2101,8 @@ async def forcescore(ctx, member: discord.Member, new_elo: float):
             )
             return await ctx.send(embed=error_embed)
 
+        old_elo = player_stats.get('elo', DEFAULT_ELO)
+
         success = await update_player_stats_in_db(
             discord_id,
             new_elo, # Unified ELO
@@ -1913,8 +2125,20 @@ async def forcescore(ctx, member: discord.Member, new_elo: float):
                 description=f"Successfully set {member.mention}'s ELO to {int(new_elo)}.",
                 color=discord.Color.green()
             )
+            response_embed.add_field(name="Old ELO", value=int(old_elo), inline=True)
+            response_embed.add_field(name="New ELO", value=int(new_elo), inline=True)
+            response_embed.set_footer(text=f"Updated by {ctx.author.display_name}. Powered by asrbw.net")
             await ctx.send(embed=response_embed)
-            await log_alert(f"Admin {ctx.author.display_name} (`{ctx.author.id}`) manually set {member.display_name}'s ({discord_id}) ELO to {int(new_elo)}.")
+            await log_moderation_action(
+                "ELO Manually Updated",
+                f"Admin {ctx.author.display_name} (`{ctx.author.id}`) manually set {member.display_name}'s (`{discord_id}`) ELO.",
+                discord.Color.blue(),
+                fields=[
+                    ("Old ELO", str(int(old_elo)), True),
+                    ("New ELO", str(int(new_elo)), True)
+                ],
+                thumbnail_url=member.display_avatar.url
+            )
             guild = bot.get_guild(MAIN_GUILD_ID)
             if guild and member:
                 await update_player_rank_role(member, new_elo) # Update rank role after manual ELO change
@@ -1940,7 +2164,7 @@ async def forcescore_error(ctx, error):
     if isinstance(error, commands.MissingAnyRole):
         await ctx.send(embed=discord.Embed(title="⛔ Permission Denied", description="You do not have permission to use this command. You need a moderation role.", color=discord.Color.red()))
     elif isinstance(error, commands.MissingRequiredArgument):
-        await ctx.send(embed=discord.Embed(title="❓ Missing Arguments", description="Missing arguments. Usage: `=forcescore <@member> <New_ELO>`", color=discord.Color.orange()))
+        await ctx.send(embed=discord.Embed(title="❓ Missing Arguments", description="Please provide a member and the new ELO. Usage: `=forcescore <@member> <New_ELO>`", color=discord.Color.blue()))
     elif isinstance(error, commands.MemberNotFound):
         await ctx.send(embed=discord.Embed(title="🔍 Member Not Found", description="Could not find that member. Please mention them properly (e.g., `@Username` or their ID).", color=discord.Color.red()))
     else:
@@ -1956,7 +2180,7 @@ async def forcescore_error(ctx, error):
 async def mute(ctx, member: Union[discord.Member, int], duration_str: str, *, reason: str = "No reason provided"):
     """
     Mutes a member for a specified duration.
-    Usage: =mute <@member|member_id> <duration> [reason] (e.g., 30m, 1h, 7d)
+    Usage: =mute <@member|member_id> <duration> [reason] (e.g., 30m, 1h, 7d, perm)
     """
     if isinstance(member, int): # If user provided an ID, try to fetch the member
         try:
@@ -1989,28 +2213,48 @@ async def mute(ctx, member: Union[discord.Member, int], duration_str: str, *, re
 
     duration = parse_duration(duration_str)
     if not duration:
-        embed = discord.Embed(title="❌ Invalid Duration", description="Invalid duration format. Use formats like `30m`, `1h`, `7d`.", color=discord.Color.red())
-        return await ctx.send(embed=embed)
+        await ctx.send(embed=discord.Embed(title="❓ Invalid Duration", description="Please provide a valid duration (e.g., `30m`, `1h`, `7d`, `perm`).", color=discord.Color.blue()))
+        return
 
     end_time = datetime.datetime.now(datetime.timezone.utc) + duration
     end_timestamp = int(end_time.timestamp())
+    
+    punishment_duration_display = duration_str if duration_str.lower() != 'perm' else "Permanent"
 
     try:
-        await member.add_roles(muted_role, reason=f"Muted by {ctx.author.name} for {duration_str}: {reason}")
-        success = await store_temp_moderation_mysql(str(member.id), 'muted', end_timestamp, reason)
-        if success:
-            response_embed = discord.Embed(
-                title="🔇 User Muted",
-                description=f"{member.mention} has been muted for **{duration_str}**.",
-                color=discord.Color.green()
-            )
-            response_embed.add_field(name="Reason", value=reason, inline=False)
+        await member.add_roles(muted_role, reason=f"Muted by {ctx.author.name} for {punishment_duration_display}: {reason}")
+        success_db = await store_temp_moderation_mysql(str(member.id), 'muted', end_timestamp, reason)
+        
+        # Record in punishments table
+        await execute_query(
+            "INSERT INTO punishments (user_id, punishment_type, moderator_id, reason, timestamp, duration) VALUES (%s, %s, %s, %s, %s, %s)",
+            (str(member.id), 'mute', str(ctx.author.id), reason, int(datetime.datetime.utcnow().timestamp()), punishment_duration_display)
+        )
+
+        response_embed = discord.Embed(
+            title="🔇 User Muted",
+            description=f"{member.mention} has been muted for **{punishment_duration_display}**.",
+            color=discord.Color.green()
+        )
+        response_embed.add_field(name="Reason", value=reason, inline=False)
+        if duration_str.lower() != 'perm':
             response_embed.add_field(name="Muted Until", value=f"<t:{end_timestamp}:F>", inline=False)
-            await ctx.send(embed=response_embed)
-            await log_strike_event(f"🔇 {member.display_name} (`{member.id}`) has been muted by {ctx.author.display_name} (`{ctx.author.id}`) for {duration_str}. Reason: {reason}")
-        else:
-            error_embed = discord.Embed(title="❌ Mute Failed", description=f"Muted {member.mention} but failed to store temporary mute. Auto-unmute may not occur.", color=discord.Color.red())
-            await ctx.send(embed=error_embed)
+        response_embed.set_footer(text=f"Muted by {ctx.author.display_name}. Powered by asrbw.net")
+        await ctx.send(embed=response_embed)
+
+        await log_moderation_action(
+            "🔇 User Muted",
+            f"**User:** {member.mention} (`{member.id}`)\n"
+            f"**Moderator:** {ctx.author.mention} (`{ctx.author.id}`)",
+            discord.Color.orange(),
+            fields=[
+                ("Duration", punishment_duration_display, True),
+                ("Reason", reason, False)
+            ],
+            thumbnail_url=member.display_avatar.url
+        )
+        if not success_db:
+            await ctx.send(embed=discord.Embed(title="❌ Mute Failed (DB)", description=f"Muted {member.mention} but failed to store temporary mute in DB. Auto-unmute may not occur.", color=discord.Color.red()))
     except discord.Forbidden:
         error_embed = discord.Embed(title="❌ Bot Permission Issue", description="I don't have permission to manage roles. Make sure I have 'Manage Roles' permission and my role is above the member's and the muted role.", color=discord.Color.red())
         await ctx.send(embed=error_embed)
@@ -2028,7 +2272,7 @@ async def mute_error(ctx, error):
     elif isinstance(error, commands.MemberNotFound):
         await ctx.send(embed=discord.Embed(title="🔍 Member Not Found", description="Could not find that member. Please mention them properly (e.g., `@Username` or their ID).", color=discord.Color.red()))
     elif isinstance(error, commands.MissingRequiredArgument):
-        await ctx.send(embed=discord.Embed(title="❓ Missing Arguments", description="Missing arguments. Usage: `=mute <@member|member_id> <duration> [reason]`", color=discord.Color.orange()))
+        await ctx.send(embed=discord.Embed(title="❓ Missing Arguments", description="Please provide a member, duration, and reason. Usage: `=mute <@member|member_id> <duration> [reason]` (e.g., `30m`, `1h`, `7d`, `perm`)", color=discord.Color.blue()))
     elif isinstance(error, commands.BadArgument) and "Could not convert" in str(error):
         await ctx.send(embed=discord.Embed(title="❌ Invalid Input", description="Invalid member or duration format. Please check your input.", color=discord.Color.red()))
     elif isinstance(error, commands.MissingAnyRole):
@@ -2078,19 +2322,33 @@ async def unmute(ctx, member: Union[discord.Member, int], *, reason: str = "No r
 
     try:
         await member.remove_roles(muted_role, reason=f"Unmuted by {ctx.author.name}: {reason}")
-        success = await remove_temp_moderation_mysql(str(member.id), 'muted')
-        if success:
-            response_embed = discord.Embed(
-                title="🔊 User Unmuted",
-                description=f"{member.mention} has been unmuted.",
-                color=discord.Color.green()
-            )
-            response_embed.add_field(name="Reason", value=reason, inline=False)
-            await ctx.send(embed=response_embed)
-            await log_strike_event(f"🔊 {member.display_name} (`{member.id}`) has been unmuted by {ctx.author.display_name} (`{ctx.author.id}`). Reason: {reason}")
-        else:
-            error_embed = discord.Embed(title="⚠️ Unmute Warning", description=f"Unmuted {member.mention} but failed to remove temporary mute record from database.", color=discord.Color.orange())
-            await ctx.send(embed=error_embed)
+        success_db = await remove_temp_moderation_mysql(str(member.id), 'muted')
+        
+        # Record in punishments table
+        await execute_query(
+            "INSERT INTO punishments (user_id, punishment_type, moderator_id, reason, timestamp, duration) VALUES (%s, %s, %s, %s, %s, %s)",
+            (str(member.id), 'unmute', str(ctx.author.id), reason, int(datetime.datetime.utcnow().timestamp()), "N/A")
+        )
+
+        response_embed = discord.Embed(
+            title="🔊 User Unmuted",
+            description=f"{member.mention} has been unmuted.",
+            color=discord.Color.green()
+        )
+        response_embed.add_field(name="Reason", value=reason, inline=False)
+        response_embed.set_footer(text=f"Unmuted by {ctx.author.display_name}. Powered by asrbw.net")
+        await ctx.send(embed=response_embed)
+
+        await log_moderation_action(
+            "🔊 User Unmuted",
+            f"**User:** {member.mention} (`{member.id}`)\n"
+            f"**Moderator:** {ctx.author.mention} (`{ctx.author.id}`)",
+            discord.Color.green(),
+            fields=[("Reason", reason, False)],
+            thumbnail_url=member.display_avatar.url
+        )
+        if not success_db:
+            await ctx.send(embed=discord.Embed(title="⚠️ Unmute Warning (DB)", description=f"Unmuted {member.mention} but failed to remove temporary mute record from DB.", color=discord.Color.orange()))
     except discord.Forbidden:
         error_embed = discord.Embed(title="❌ Bot Permission Issue", description="I don't have permission to manage roles. Make sure I have 'Manage Roles' permission.", color=discord.Color.red())
         await ctx.send(embed=error_embed)
@@ -2108,7 +2366,7 @@ async def unmute_error(ctx, error):
     elif isinstance(error, commands.MemberNotFound):
         await ctx.send(embed=discord.Embed(title="🔍 Member Not Found", description="Could not find that member. Please mention them properly (e.g., `@Username` or their ID).", color=discord.Color.red()))
     elif isinstance(error, commands.MissingRequiredArgument):
-        await ctx.send(embed=discord.Embed(title="❓ Missing Arguments", description="Missing arguments. Usage: `=unmute <@member|member_id> [reason]`", color=discord.Color.orange()))
+        await ctx.send(embed=discord.Embed(title="❓ Missing Argument", description="Please provide a member to unmute. Usage: `=unmute <@member|member_id> [reason]`", color=discord.Color.blue()))
     elif isinstance(error, commands.BadArgument) and "Could not convert" in str(error):
         await ctx.send(embed=discord.Embed(title="❌ Invalid Input", description="Invalid member format. Please check your input.", color=discord.Color.red()))
     elif isinstance(error, commands.MissingAnyRole):
@@ -2159,45 +2417,51 @@ async def ban(ctx, member: Union[discord.Member, int], duration_str: str, *, rea
         embed = discord.Embed(title="⚠️ Already Banned", description=f"{member.mention} already has the banned role.", color=discord.Color.orange())
         return await ctx.send(embed=embed)
 
-    duration = None
-    end_timestamp = None
-    duration_display = "permanently"
-    if duration_str.lower() != 'perm':
-        duration = parse_duration(duration_str)
-        if not duration:
-            embed = discord.Embed(title="❌ Invalid Duration", description="Invalid duration format. Use formats like `30m`, `1h`, `7d`, or `perm` for permanent.", color=discord.Color.red())
-            return await ctx.send(embed=embed)
-        end_time = datetime.datetime.now(datetime.timezone.utc) + duration
-        end_timestamp = int(end_time.timestamp())
-        duration_display = duration_str
+    duration = parse_duration(duration_str)
+    if not duration:
+        await ctx.send(embed=discord.Embed(title="❓ Invalid Duration", description="Please provide a valid duration (e.g., `30m`, `1h`, `7d`, `perm`).", color=discord.Color.blue()))
+        return
+
+    end_time = datetime.datetime.now(datetime.timezone.utc) + duration
+    end_timestamp = int(end_time.timestamp())
+    
+    punishment_duration_display = duration_str if duration_str.lower() != 'perm' else "Permanent"
 
     try:
-        await member.add_roles(banned_role, reason=f"Ban role assigned by {ctx.author.name} for {duration_display}: {reason}")
+        await member.add_roles(banned_role, reason=f"Ban role assigned by {ctx.author.name} for {punishment_duration_display}: {reason}")
         
+        success_db = await store_temp_moderation_mysql(str(member.id), 'banned', end_timestamp, reason)
+        
+        # Record in punishments table
+        await execute_query(
+            "INSERT INTO punishments (user_id, punishment_type, moderator_id, reason, timestamp, duration) VALUES (%s, %s, %s, %s, %s, %s)",
+            (str(member.id), 'ban', str(ctx.author.id), reason, int(datetime.datetime.utcnow().timestamp()), punishment_duration_display)
+        )
+
+        response_embed = discord.Embed(
+            title="🚫 User Banned (Role Assigned)",
+            description=f"{member.mention} has been given the banned role for **{punishment_duration_display}**.",
+            color=discord.Color.red()
+        )
+        response_embed.add_field(name="Reason", value=reason, inline=False)
         if duration_str.lower() != 'perm':
-            success = await store_temp_moderation_mysql(str(member.id), 'banned', end_timestamp, reason)
-            if success:
-                response_embed = discord.Embed(
-                    title="🚫 User Banned (Role Assigned)",
-                    description=f"{member.mention} has been given the banned role for **{duration_display}**.",
-                    color=discord.Color.red()
-                )
-                response_embed.add_field(name="Reason", value=reason, inline=False)
-                response_embed.add_field(name="Banned Until", value=f"<t:{end_timestamp}:F>", inline=False)
-                await ctx.send(embed=response_embed)
-                await log_strike_event(f"🚫 {member.display_name} (`{member.id}`) has been given the banned role by {ctx.author.display_name} (`{ctx.author.id}`) for {duration_display}. Reason: {reason}")
-            else:
-                error_embed = discord.Embed(title="❌ Ban Failed", description=f"Assigned banned role to {member.mention} but failed to store temporary ban. Auto-role-removal may not occur.", color=discord.Color.red())
-                await ctx.send(embed=error_embed)
-        else:
-            response_embed = discord.Embed(
-                title="🚫 User Permanently Banned (Role Assigned)",
-                description=f"{member.mention} has been permanently given the banned role.",
-                color=discord.Color.red()
-            )
-            response_embed.add_field(name="Reason", value=reason, inline=False)
-            await ctx.send(embed=response_embed)
-            await log_strike_event(f"🚫 {member.display_name} (`{member.id}`) has been permanently given the banned role by {ctx.author.display_name} (`{ctx.author.id}`). Reason: {reason}")
+            response_embed.add_field(name="Banned Until", value=f"<t:{end_timestamp}:F>", inline=False)
+        response_embed.set_footer(text=f"Banned by {ctx.author.display_name}. Powered by asrbw.net")
+        await ctx.send(embed=response_embed)
+
+        await log_moderation_action(
+            "🚫 User Banned",
+            f"**User:** {member.mention} (`{member.id}`)\n"
+            f"**Moderator:** {ctx.author.mention} (`{ctx.author.id}`)",
+            discord.Color.red(),
+            fields=[
+                ("Duration", punishment_duration_display, True),
+                ("Reason", reason, False)
+            ],
+            thumbnail_url=member.display_avatar.url
+        )
+        if not success_db:
+            await ctx.send(embed=discord.Embed(title="❌ Ban Failed (DB)", description=f"Assigned banned role to {member.mention} but failed to store temporary ban in DB. Auto-role-removal may not occur.", color=discord.Color.red()))
 
     except discord.Forbidden:
         error_embed = discord.Embed(title="❌ Bot Permission Issue", description="I don't have permission to manage roles. Make sure I have 'Manage Roles' permission and my role is above the member's and the banned role.", color=discord.Color.red())
@@ -2216,7 +2480,7 @@ async def ban_error(ctx, error):
     elif isinstance(error, commands.MemberNotFound):
         await ctx.send(embed=discord.Embed(title="🔍 Member Not Found", description="Could not find that member. Please mention them properly (e.g., `@Username` or their ID).", color=discord.Color.red()))
     elif isinstance(error, commands.MissingRequiredArgument):
-        await ctx.send(embed=discord.Embed(title="❓ Missing Arguments", description="Missing arguments. Usage: `=ban <@member|member_id> <duration> [reason]`", color=discord.Color.orange()))
+        await ctx.send(embed=discord.Embed(title="❓ Missing Arguments", description="Please provide a member, duration, and reason. Usage: `=ban <@member|member_id> <duration> [reason]` (e.g., `30m`, `1h`, `7d`, `perm`)", color=discord.Color.blue()))
     elif isinstance(error, commands.BadArgument) and "Could not convert" in str(error):
         await ctx.send(embed=discord.Embed(title="❌ Invalid Input", description="Invalid member or duration format. Please check your input.", color=discord.Color.red()))
     elif isinstance(error, commands.MissingAnyRole):
@@ -2266,19 +2530,33 @@ async def unban(ctx, member: Union[discord.Member, int], *, reason: str = "No re
 
     try:
         await member.remove_roles(banned_role, reason=f"Ban role removed by {ctx.author.name}: {reason}")
-        success = await remove_temp_moderation_mysql(str(member.id), 'banned')
-        if success:
-            response_embed = discord.Embed(
-                title="🔓 User Unbanned (Role Removed)",
-                description=f"{member.mention} has had the banned role removed.",
-                color=discord.Color.green()
-            )
-            response_embed.add_field(name="Reason", value=reason, inline=False)
-            await ctx.send(embed=response_embed)
-            await log_strike_event(f"🔓 {member.display_name} (`{member.id}`) has had the banned role removed by {ctx.author.display_name} (`{ctx.author.id}`). Reason: {reason}")
-        else:
-            error_embed = discord.Embed(title="⚠️ Unban Warning", description=f"Removed banned role from {member.mention} but failed to remove temporary ban record from database.", color=discord.Color.orange())
-            await ctx.send(embed=error_embed)
+        success_db = await remove_temp_moderation_mysql(str(member.id), 'banned')
+        
+        # Record in punishments table
+        await execute_query(
+            "INSERT INTO punishments (user_id, punishment_type, moderator_id, reason, timestamp, duration) VALUES (%s, %s, %s, %s, %s, %s)",
+            (str(member.id), 'unban', str(ctx.author.id), reason, int(datetime.datetime.utcnow().timestamp()), "N/A")
+        )
+
+        response_embed = discord.Embed(
+            title="🔓 User Unbanned (Role Removed)",
+            description=f"{member.mention} has had the banned role removed.",
+            color=discord.Color.green()
+        )
+        response_embed.add_field(name="Reason", value=reason, inline=False)
+        response_embed.set_footer(text=f"Unbanned by {ctx.author.display_name}. Powered by asrbw.net")
+        await ctx.send(embed=response_embed)
+
+        await log_moderation_action(
+            "🔓 User Unbanned",
+            f"**User:** {member.mention} (`{member.id}`)\n"
+            f"**Moderator:** {ctx.author.mention} (`{ctx.author.id}`)",
+            discord.Color.green(),
+            fields=[("Reason", reason, False)],
+            thumbnail_url=member.display_avatar.url
+        )
+        if not success_db:
+            await ctx.send(embed=discord.Embed(title="⚠️ Unban Warning (DB)", description=f"Removed banned role from {member.mention} but failed to remove temporary ban record from DB.", color=discord.Color.orange()))
     except discord.Forbidden:
         error_embed = discord.Embed(title="❌ Bot Permission Issue", description="I don't have permission to manage roles. Make sure I have 'Manage Roles' permission.", color=discord.Color.red())
         await ctx.send(embed=error_embed)
@@ -2296,7 +2574,7 @@ async def unban_error(ctx, error):
     elif isinstance(error, commands.MemberNotFound):
         await ctx.send(embed=discord.Embed(title="🔍 Member Not Found", description="Could not find that member. Please mention them properly (e.g., `@Username` or their ID).", color=discord.Color.red()))
     elif isinstance(error, commands.MissingRequiredArgument):
-        await ctx.send(embed=discord.Embed(title="❓ Missing Arguments", description="Missing arguments. Usage: `=unban <@member|member_id> [reason]`", color=discord.Color.orange()))
+        await ctx.send(embed=discord.Embed(title="❓ Missing Argument", description="Please provide a member to unban. Usage: `=unban <@member|member_id> [reason]`", color=discord.Color.blue()))
     elif isinstance(error, commands.BadArgument) and "Could not convert" in str(error):
         await ctx.send(embed=discord.Embed(title="❌ Invalid Input", description="Invalid member format. Please check your input.", color=discord.Color.red()))
     elif isinstance(error, commands.MissingAnyRole):
@@ -2455,8 +2733,8 @@ async def win(ctx, player: discord.Member, game_type: str = "general", is_mvp: b
     """
     game_type = game_type.lower()
     if game_type not in ['3v3', '4v4', 'general']: # Allow 'general' for manual wins not tied to specific mode
-        embed = discord.Embed(title="❌ Invalid Game Type", description="Invalid game type. Use '3v3', '4v4', or 'general'.", color=discord.Color.red())
-        return await ctx.send(embed=embed)
+        await ctx.send(embed=discord.Embed(title="❓ Invalid Game Type", description="Game type must be `3v3`, `4v4`, or `general`.", color=discord.Color.blue()))
+        return
 
     discord_id = str(player.id)
     game_id = str(uuid.uuid4())
@@ -2472,9 +2750,20 @@ async def win(ctx, player: discord.Member, game_type: str = "general", is_mvp: b
         response_embed.add_field(name="ELO Change", value=result['elo_change'], inline=True)
         response_embed.add_field(name="New ELO", value=int(result['elo_after']), inline=True)
         response_embed.add_field(name="MVP", value="Yes" if is_mvp else "No", inline=True)
-        response_embed.set_footer(text=f"Game ID: {game_id}")
+        response_embed.set_footer(text=f"Game ID: {game_id} | Recorded by {ctx.author.display_name}. Powered by asrbw.net")
         await ctx.send(embed=response_embed)
-        await log_alert(f"Admin {ctx.author.display_name} manually awarded win to {player.display_name} ({discord_id}) in {game_type.upper()} mode. ELO Change: {result['elo_change']}. MVP: {is_mvp}. Game ID: `{game_id}`.")
+        await log_moderation_action(
+            "Game Win Manually Recorded",
+            f"Admin {ctx.author.display_name} (`{ctx.author.id}`) manually awarded win to {player.display_name} (`{discord_id}`).",
+            discord.Color.green(),
+            fields=[
+                ("Game Type", game_type.upper(), True),
+                ("ELO Change", str(result['elo_change']), True),
+                ("MVP", "Yes" if is_mvp else "No", True),
+                ("Game ID", f"`{game_id}`", False)
+            ],
+            thumbnail_url=player.display_avatar.url
+        )
     else:
         error_embed = discord.Embed(title="❌ Operation Failed", description=f"Failed to award win to {player.mention}. Player might not be registered.", color=discord.Color.red())
         await ctx.send(embed=error_embed)
@@ -2484,7 +2773,7 @@ async def win_error(ctx, error):
     if isinstance(error, commands.MissingAnyRole):
         await ctx.send(embed=discord.Embed(title="⛔ Permission Denied", description="You do not have permission to use this command. You need a moderation role.", color=discord.Color.red()))
     elif isinstance(error, commands.MissingRequiredArgument):
-        await ctx.send(embed=discord.Embed(title="❓ Missing Arguments", description="Missing arguments. Usage: `=win <@player> [game_type (e.g., 3v3, 4v4)] [is_mvp (True/False)]`", color=discord.Color.orange()))
+        await ctx.send(embed=discord.Embed(title="❓ Missing Arguments", description="Please provide a player. Usage: `=win <@player> [game_type (e.g., 3v3, 4v4)] [is_mvp (True/False)]`", color=discord.Color.blue()))
     elif isinstance(error, commands.MemberNotFound):
         await ctx.send(embed=discord.Embed(title="🔍 Member Not Found", description="Could not find that member. Please mention them properly (e.g., `@Username` or their ID).", color=discord.Color.red()))
     elif isinstance(error, commands.BadArgument) and "Could not convert" in str(error):
@@ -2502,8 +2791,8 @@ async def loss(ctx, player: discord.Member, game_type: str = "general"):
     """
     game_type = game_type.lower()
     if game_type not in ['3v3', '4v4', 'general']:
-        embed = discord.Embed(title="❌ Invalid Game Type", description="Invalid game type. Use '3v3', '4v4', or 'general'.", color=discord.Color.red())
-        return await ctx.send(embed=embed)
+        await ctx.send(embed=discord.Embed(title="❓ Invalid Game Type", description="Game type must be `3v3`, `4v4`, or `general`.", color=discord.Color.blue()))
+        return
 
     discord_id = str(player.id)
     game_id = str(uuid.uuid4())
@@ -2518,9 +2807,19 @@ async def loss(ctx, player: discord.Member, game_type: str = "general"):
         )
         response_embed.add_field(name="ELO Change", value=result['elo_change'], inline=True)
         response_embed.add_field(name="New ELO", value=int(result['elo_after']), inline=True)
-        response_embed.set_footer(text=f"Game ID: {game_id}")
+        response_embed.set_footer(text=f"Game ID: {game_id} | Recorded by {ctx.author.display_name}. Powered by asrbw.net")
         await ctx.send(embed=response_embed)
-        await log_alert(f"Admin {ctx.author.display_name} manually recorded loss for {player.display_name} ({discord_id}) in {game_type.upper()} mode. ELO Change: {result['elo_change']}. Game ID: `{game_id}`.")
+        await log_moderation_action(
+            "Game Loss Manually Recorded",
+            f"Admin {ctx.author.display_name} (`{ctx.author.id}`) manually recorded loss for {player.display_name} (`{discord_id}`).",
+            discord.Color.red(),
+            fields=[
+                ("Game Type", game_type.upper(), True),
+                ("ELO Change", str(result['elo_change']), True),
+                ("Game ID", f"`{game_id}`", False)
+            ],
+            thumbnail_url=player.display_avatar.url
+        )
     else:
         error_embed = discord.Embed(title="❌ Operation Failed", description=f"Failed to record loss for {player.mention}. Player might not be registered.", color=discord.Color.red())
         await ctx.send(embed=error_embed)
@@ -2530,7 +2829,7 @@ async def loss_error(ctx, error):
     if isinstance(error, commands.MissingAnyRole):
         await ctx.send(embed=discord.Embed(title="⛔ Permission Denied", description="You do not have permission to use this command. You need a moderation role.", color=discord.Color.red()))
     elif isinstance(error, commands.MissingRequiredArgument):
-        await ctx.send(embed=discord.Embed(title="❓ Missing Arguments", description="Missing arguments. Usage: `=loss <@player> [game_type (e.g., 3v3, 4v4)]`", color=discord.Color.orange()))
+        await ctx.send(embed=discord.Embed(title="❓ Missing Arguments", description="Please provide a player. Usage: `=loss <@player> [game_type (e.g., 3v3, 4v4)]`", color=discord.Color.blue()))
     elif isinstance(error, commands.MemberNotFound):
         await ctx.send(embed=discord.Embed(title="🔍 Member Not Found", description="Could not find that member. Please mention them properly (e.g., `@Username` or their ID).", color=discord.Color.red()))
     else:
@@ -2592,8 +2891,14 @@ async def undo_game_score(ctx, game_id: str):
             description="\n".join(affected_players_info),
             color=discord.Color.blue()
         )
+        response_embed.set_footer(text=f"Action by {ctx.author.display_name}. Powered by asrbw.net")
         await ctx.send(embed=response_embed)
-        await log_alert(f"Admin {ctx.author.display_name} (`{ctx.author.id}`) performed `=undo` for game ID `{game_id}`. Details:\n" + "\n".join(affected_players_info))
+        await log_moderation_action(
+            "Game Score Undone",
+            f"Admin {ctx.author.display_name} (`{ctx.author.id}`) performed `=undo` for game ID `{game_id}`.",
+            discord.Color.blue(),
+            fields=[("Details", "\n".join(affected_players_info), False)]
+        )
     else:
         embed = discord.Embed(title="⚠️ No Changes Applied", description=f"No changes were applied for game ID `{game_id}` during undo.", color=discord.Color.orange())
         await ctx.send(embed=embed)
@@ -2603,7 +2908,7 @@ async def undo_game_score_error(ctx, error):
     if isinstance(error, commands.MissingAnyRole):
         await ctx.send(embed=discord.Embed(title="⛔ Permission Denied", description="You do not have permission to use this command. You need a moderation role.", color=discord.Color.red()))
     elif isinstance(error, commands.MissingRequiredArgument):
-        await ctx.send(embed=discord.Embed(title="❓ Missing Arguments", description="Missing arguments. Usage: `=undo <game_id>`", color=discord.Color.orange()))
+        await ctx.send(embed=discord.Embed(title="❓ Missing Argument", description="Please provide the game ID to undo. Usage: `=undo <game_id>`", color=discord.Color.blue()))
     else:
         await ctx.send(embed=discord.Embed(title="⚠️ Error", description=f"An unexpected error occurred: {error}", color=discord.Color.red()))
         print(f"Error in undo command: {error}")
@@ -2639,8 +2944,8 @@ async def rescore_game(ctx, game_id: str, winning_player_ids_str: str, mvp_playe
         return await ctx.send(embed=embed)
     
     if new_game_type.lower() not in ['3v3', '4v4', 'general']:
-        embed = discord.Embed(title="❌ Invalid Game Type", description="Invalid new game type. Use '3v3', '4v4', or 'general'.", color=discord.Color.red())
-        return await ctx.send(embed=embed)
+        await ctx.send(embed=discord.Embed(title="❓ Invalid Game Type", description="Game type must be `3v3`, `4v4`, or `general`.", color=discord.Color.blue()))
+        return
 
     # Resolve MVP player if provided as ID
     resolved_mvp_member = None
@@ -2674,7 +2979,12 @@ async def rescore_game(ctx, game_id: str, winning_player_ids_str: str, mvp_playe
         color=discord.Color.blue()
     )
     await ctx.send(embed=undo_embed)
-    await log_alert(f"Admin {ctx.author.display_name} (`{ctx.author.id}`) initiating `=rescore` for game ID `{game_id}`. Original scores undone.")
+    await log_moderation_action(
+        "Game Rescore Initiated (Undo)",
+        f"Admin {ctx.author.display_name} (`{ctx.author.id}`) initiating `=rescore` for game ID `{game_id}`. Original scores undone.",
+        discord.Color.blue(),
+        fields=[("Details", "\n".join(undo_results), False)]
+    )
 
     # 2. Apply new scores
     winning_player_ids = [did.strip() for did in winning_player_ids_str.split(',') if did.strip().isdigit()]
@@ -2722,8 +3032,14 @@ async def rescore_game(ctx, game_id: str, winning_player_ids_str: str, mvp_playe
             description="\n".join(rescore_results),
             color=discord.Color.green()
         )
+        rescore_embed.set_footer(text=f"Action by {ctx.author.display_name}. Powered by asrbw.net")
         await ctx.send(embed=rescore_embed)
-        await log_alert(f"Admin {ctx.author.display_name} (`{ctx.author.id}`) completed `=rescore` for game ID `{game_id}`. New scores applied:\n" + "\n".join(rescore_results))
+        await log_moderation_action(
+            "Game Rescore Completed (New Scores)",
+            f"Admin {ctx.author.display_name} (`{ctx.author.id}`) completed `=rescore` for game ID `{game_id}`. New scores applied.",
+            discord.Color.green(),
+            fields=[("Details", "\n".join(rescore_results), False)]
+        )
 
         # Generate and send game results image
         game_info_for_image = {
@@ -2752,7 +3068,7 @@ async def rescore_game_error(ctx, error):
     if isinstance(error, commands.MissingAnyRole):
         await ctx.send(embed=discord.Embed(title="⛔ Permission Denied", description="You do not have permission to use this command. You need a moderation role.", color=discord.Color.red()))
     elif isinstance(error, commands.MissingRequiredArgument):
-        await ctx.send(embed=discord.Embed(title="❓ Missing Arguments", description="Missing arguments. Usage: `=rescore <game_id> <winning_player_discord_ids> [mvp_player (@member|member_id)] [new_game_type]`", color=discord.Color.orange()))
+        await ctx.send(embed=discord.Embed(title="❓ Missing Arguments", description="Please provide game ID and winning player IDs. Usage: `=rescore <game_id> <winning_player_discord_ids> [mvp_player (@member|member_id)] [new_game_type]`", color=discord.Color.blue()))
     elif isinstance(error, commands.MemberNotFound):
         await ctx.send(embed=discord.Embed(title="🔍 Member Not Found", description="Could not find the MVP member. Please mention them properly (e.g., `@Username` or their ID).", color=discord.Color.red()))
     elif isinstance(error, commands.BadArgument) and "Could not convert" in str(error):
@@ -2871,7 +3187,20 @@ class TicketTypeSelect(View):
             embed.set_footer(text=f"Ticket ID: {uuid.uuid4().hex[:8]} | Powered by asrbw.net")
             
             await ticket_channel.send(f"{interaction.user.mention} {' '.join([guild.get_role(r_id).mention for r_id in MODERATION_ROLES_IDS if guild.get_role(r_id)])}", embed=embed)
-            await log_ticket_event(f"New {selected_type} ticket opened by {interaction.user.display_name} in {ticket_channel.mention}.")
+            
+            # Store active ticket for =close command
+            active_tickets[ticket_channel.id] = {
+                "type": selected_type,
+                "creator_id": str(interaction.user.id),
+                "created_at": datetime.datetime.utcnow()
+            }
+            await log_ticket_event(
+                "New Ticket Opened",
+                f"New {selected_type} ticket opened by {interaction.user.mention} (`{interaction.user.id}`).",
+                discord.Color.blue(),
+                fields=[("Channel", ticket_channel.mention, True)],
+                thumbnail_url=interaction.user.display_avatar.url
+            )
             await interaction.message.edit(content=f"Your ticket has been created: {ticket_channel.mention}", view=None) # Disable view
         except discord.Forbidden:
             await log_alert(f"Bot lacks permissions to create ticket channel in category {ticket_category.name}. Ensure 'Manage Channels' permission is granted.")
@@ -2918,25 +3247,24 @@ async def requeststrike(ctx, target_player: discord.Member, *, reason: str = "No
         embed = discord.Embed(title="⚠️ Missing Proof", description="Please attach an image as proof for your strike request.", color=discord.Color.orange())
         return await ctx.send(embed=embed)
 
-    strike_channel = await create_strike_channel(ctx.guild, ctx.author, target_player, reason, ctx.message.attachments)
+    strike_channel = await create_strike_request_channel(ctx.guild, ctx.author, target_player, reason, ctx.message.attachments)
 
     if strike_channel:
         response_embed = discord.Embed(
             title="✅ Strike Request Submitted",
-            description=f"Strike request for {target_player.mention} submitted. Discussion channel: {strike_channel.mention}",
+            description=f"Strike request for {target_player.mention} submitted. Discussion and voting channel: {strike_channel.mention}",
             color=discord.Color.green()
         )
         await ctx.send(embed=response_embed)
-        await log_strike_event(f"Strike requested by {ctx.author.display_name} for {target_player.display_name} for '{reason}'. Discussion in {strike_channel.mention}. Attachments: {[att.url for att in ctx.message.attachments]}")
     else:
         error_embed = discord.Embed(title="❌ Request Failed", description="Failed to create strike channel. Request not fully processed.", color=discord.Color.red())
         await ctx.send(embed=error_embed)
-        await log_alert(f"Failed to create strike channel for {target_player.display_name} by {ctx.author.display_name}.")
+        await log_alert(f"Failed to create strike request channel for {target_player.display_name} by {ctx.author.display_name}.")
 
 @requeststrike.error
 async def requeststrike_error(ctx, error):
     if isinstance(error, commands.MissingRequiredArgument):
-        await ctx.send(embed=discord.Embed(title="❓ Missing Arguments", description="Missing arguments. Usage: `=requeststrike <@User> [reason]` (and attach image).", color=discord.Color.orange()))
+        await ctx.send(embed=discord.Embed(title="❓ Missing Arguments", description="Please provide a target user and reason. Usage: `=requeststrike <@User> <reason>` (attach image)", color=discord.Color.blue()))
     elif isinstance(error, commands.MissingAnyRole):
         await ctx.send(embed=discord.Embed(title="⛔ Permission Denied", description="You do not have permission to use this command. You need a moderation role.", color=discord.Color.red()))
     elif isinstance(error, commands.MemberNotFound):
@@ -2948,11 +3276,21 @@ async def requeststrike_error(ctx, error):
 
 @bot.command(name='requestss')
 @commands.has_any_role(*MODERATION_ROLES_IDS)
-async def requestss(ctx, target_player: discord.Member, *, reason: str = "No reason provided"):
+async def requestss(ctx, target_player: Union[discord.Member, int], *, reason: str = "No reason provided"):
     """
     (Moderation) Requests a screenshare for a player. Requires an image attachment as proof.
-    Usage: =requestss <@User> [reason] (attach image)
+    Usage: =requestss <@User|User_ID> [reason] (attach image)
     """
+    if isinstance(target_player, int): # If user provided an ID, try to fetch the member
+        try:
+            target_player = await ctx.guild.fetch_member(target_player)
+        except discord.NotFound:
+            error_embed = discord.Embed(title="🔍 Member Not Found", description=f"Could not find a member with ID `{target_player}` in this server.", color=discord.Color.red())
+            return await ctx.send(embed=error_embed)
+        except Exception as e:
+            error_embed = discord.Embed(title="⚠️ Error", description=f"An error occurred while fetching member: {e}", color=discord.Color.red())
+            return await ctx.send(embed=error_embed)
+
     if not ctx.message.attachments:
         embed = discord.Embed(title="⚠️ Missing Proof", description="Please attach an image as proof for your screenshare request.", color=discord.Color.orange())
         return await ctx.send(embed=embed)
@@ -2966,7 +3304,6 @@ async def requestss(ctx, target_player: discord.Member, *, reason: str = "No rea
             color=discord.Color.green()
         )
         await ctx.send(embed=response_embed)
-        await log_screenshare_event(f"Screenshare requested by {ctx.author.display_name} for {target_player.display_name} for '{reason}'. Discussion in {screenshare_channel.mention}. Attachments: {[att.url for att in ctx.message.attachments]}")
     else:
         error_embed = discord.Embed(title="❌ Request Failed", description="Failed to create screenshare channel. Request not fully processed.", color=discord.Color.red())
         await ctx.send(embed=error_embed)
@@ -2975,11 +3312,13 @@ async def requestss(ctx, target_player: discord.Member, *, reason: str = "No rea
 @requestss.error
 async def requestss_error(ctx, error):
     if isinstance(error, commands.MissingRequiredArgument):
-        await ctx.send(embed=discord.Embed(title="❓ Missing Arguments", description="Missing arguments. Usage: `=requestss <@User> [reason]` (and attach image).", color=discord.Color.orange()))
+        await ctx.send(embed=discord.Embed(title="❓ Missing Arguments", description="Please provide a target user and reason. Usage: `=requestss <@User|User_ID> <reason>` (attach image)", color=discord.Color.blue()))
     elif isinstance(error, commands.MissingAnyRole):
         await ctx.send(embed=discord.Embed(title="⛔ Permission Denied", description="You do not have permission to use this command. You need a moderation role.", color=discord.Color.red()))
     elif isinstance(error, commands.MemberNotFound):
         await ctx.send(embed=discord.Embed(title="🔍 Member Not Found", description="Could not find that member. Please mention them properly (e.g., `@Username` or their ID).", color=discord.Color.red()))
+    elif isinstance(error, commands.BadArgument) and "Could not convert" in str(error):
+        await ctx.send(embed=discord.Embed(title="❌ Invalid Input", description="Invalid user ID format. Please check your input.", color=discord.Color.red()))
     else:
         await ctx.send(embed=discord.Embed(title="⚠️ Error", description=f"An unexpected error occurred: {error}", color=discord.Color.red()))
         print(f"Error in requestss command: {error}")
@@ -2999,8 +3338,8 @@ async def poll(ctx, poll_type: str, target_member: discord.Member, *, question: 
 
     poll_type = poll_type.lower()
     if poll_type not in ['pups', 'general']: # Extend with more types as needed
-        embed = discord.Embed(title="❌ Invalid Poll Type", description="Invalid poll type. Currently supported types: `pups`, `general`.", color=discord.Color.red())
-        return await ctx.send(embed=embed)
+        await ctx.send(embed=discord.Embed(title="❓ Invalid Poll Type", description="Poll type must be `pups` or `general`.", color=discord.Color.blue()))
+        return
 
     embed = discord.Embed(
         title=f"📊 New {poll_type.upper()} Poll",
@@ -3023,7 +3362,7 @@ async def poll(ctx, poll_type: str, target_member: discord.Member, *, question: 
 @poll.error
 async def poll_error(ctx, error):
     if isinstance(error, commands.MissingRequiredArgument):
-        await ctx.send(embed=discord.Embed(title="❓ Missing Arguments", description="Missing arguments. Usage: `=poll <type> <@target_member> <Your Poll Question>`", color=discord.Color.orange()))
+        await ctx.send(embed=discord.Embed(title="❓ Missing Arguments", description="Please provide poll type, target member, and question. Usage: `=poll <type> <@target_member> <Your Poll Question>`", color=discord.Color.blue()))
     elif isinstance(error, commands.MissingRole):
         await ctx.send(embed=discord.Embed(title="⛔ Permission Denied", description=f"You do not have permission to use this command. You need the `{ctx.guild.get_role(PPP_MANAGER_ROLE_ID).name}` role.", color=discord.Color.red()))
     elif isinstance(error, commands.MemberNotFound):
@@ -3096,9 +3435,11 @@ async def purge_all_data(ctx):
 
     if view.confirmed:
         try:
-            # Truncate the accounts table
-            success = await execute_query("TRUNCATE TABLE accounts")
-            if success:
+            # Truncate the accounts and punishments tables
+            success_accounts = await execute_query("TRUNCATE TABLE accounts")
+            success_punishments = await execute_query("TRUNCATE TABLE punishments")
+
+            if success_accounts and success_punishments:
                 response_embed = discord.Embed(
                     title="✅ Data Purged",
                     description="All user data and statistics have been purged from the database.",
@@ -3182,106 +3523,33 @@ async def purge_all_data_error(ctx, error):
         print(f"Error in purgeall command: {error}")
 
 
-# --- Placeholder/Example Functions ---
-
-# This function would typically be called by your Minecraft plugin via a webhook or similar.
-# For demonstration, you can manually call it or create a test command.
-async def process_game_results(game_data: dict):
-    """
-    Processes game results received from the Minecraft plugin,
-    updates player ELO and stats, and logs the game.
-    game_data example:
-    {
-        "game_id": "D8A1A",
-        "game_type": "4v4",
-        "winning_team_name": "Team A", # Optional, for display
-        "mvp_discord_id": "123456789012345678",
-        "player_results": [
-            {"discord_id": "123456789012345678", "is_winner": True, "is_mvp": True, "elo_before": 700, "elo_after": 720, "elo_change": 20, "minecraft_username": "CDTago3"},
-            {"discord_id": "123456789012345679", "is_winner": True, "is_mvp": False, "elo_before": 650, "elo_after": 675, "elo_change": 25, "minecraft_username": "p4cd"},
-            # ... other players
-        ]
-    }
-    """
-    print(f"Processing game results: {game_data}")
-    
-    guild = bot.get_guild(MAIN_GUILD_ID)
-    if not guild:
-        print(f"Guild with ID {MAIN_GUILD_ID} not found for processing game results.")
-        await log_alert(f"Failed to process game results for game {game_data.get('game_id', 'N/A')}: Guild not found.")
-        return
-
-    game_id = game_data.get('game_id', str(uuid.uuid4()))
-    
-    # Apply ELO changes and update stats for each player
-    for player_result in game_data.get('player_results', []):
-        discord_id = player_result['discord_id']
-        is_win = player_result.get('is_winner', False)
-        is_mvp = player_result.get('is_mvp', False)
-        game_type = game_data.get('game_type', 'general') # Game type from plugin
-        
-        # This will update player stats in DB and also their nickname/rank role
-        await apply_stat_changes(discord_id, is_win, game_type, is_mvp, game_id)
-
-    # Generate and send game results image to the dedicated channel
-    games_results_channel = bot.get_channel(GAMES_RESULTS_CHANNEL_ID)
-    if games_results_channel:
-        try:
-            image_buffer = await generate_game_results_image(game_data)
-            file = File(image_buffer, filename=f"game_results_{game_id}.png")
-            await games_results_channel.send(f"📊 **Game {game_id} Results:**", file=file)
-            await log_game_event(f"Game {game_id} finished. Results posted to {games_results_channel.mention}.")
-        except Exception as e:
-            print(f"Error generating/sending game results image for game {game_id}: {e}")
-            await log_alert(f"Error generating/sending game results image for game {game_id}: {e}")
-            # Fallback to text if image fails
-            embed = discord.Embed(
-                title=f"📊 Game {game_id} Results (Image Failed)",
-                description="An error occurred displaying the game results image. Here's a text summary:",
-                color=discord.Color.orange()
-            )
-            winning_players_str = "\n".join([p['minecraft_username'] for p in game_data['player_results'] if p['is_winner']])
-            losing_players_str = "\n".join([p['minecraft_username'] for p in game_data['player_results'] if not p['is_winner']])
-            mvp_player_name = next((p['minecraft_username'] for p in game_data['player_results'] if p.get('is_mvp')), 'N/A')
-
-            embed.add_field(name="Winning Team", value=winning_players_str or "N/A", inline=False)
-            embed.add_field(name="Losing Team", value=losing_players_str or "N/A", inline=False)
-            embed.add_field(name="MVP", value=mvp_player_name, inline=False)
-            embed.set_footer(text=f"Powered by asrbw.net")
-            await games_results_channel.send(embed=embed)
-    else:
-        print(f"Games results channel (ID: {GAMES_RESULTS_CHANNEL_ID}) not found. Cannot post game results.")
-        await log_alert(f"Games results channel (ID: {GAMES_RESULTS_CHANNEL_ID}) not found. Game {game_id} results not posted.")
-
 # --- Party System ---
 class PartyInviteView(View):
-    def __init__(self, owner_id: str, invited_id: str):
+    def __init__(self, owner_id: str, invited_id: str, original_channel_id: int):
         super().__init__(timeout=180) # Invite expires in 3 minutes
         self.owner_id = owner_id
         self.invited_id = invited_id
-        self.accepted = False
+        self.original_channel_id = original_channel_id # Store channel ID to send response there
+        self.accepted = False # Flag to prevent timeout message if accepted
 
     async def on_timeout(self):
-        owner_member = bot.get_guild(MAIN_GUILD_ID).get_member(int(self.owner_id))
-        invited_member = bot.get_guild(MAIN_GUILD_ID).get_member(int(self.invited_id))
+        guild = bot.get_guild(MAIN_GUILD_ID)
+        if not guild: return
         
-        if not self.accepted:
-            if owner_member:
-                try:
-                    await owner_member.send(embed=discord.Embed(
-                        title="⏱️ Party Invite Expired",
-                        description=f"Your invite to {invited_member.display_name if invited_member else 'an unknown user'} has expired.",
-                        color=discord.Color.orange()
-                    ))
-                except discord.Forbidden: pass # Cannot DM
-            if invited_member:
-                try:
-                    await invited_member.send(embed=discord.Embed(
-                        title="⏱️ Party Invite Expired",
-                        description=f"The party invite from {owner_member.display_name if owner_member else 'an unknown user'} has expired.",
-                        color=discord.Color.orange()
-                    ))
-                except discord.Forbidden: pass # Cannot DM
+        owner_member = guild.get_member(int(self.owner_id))
+        invited_member = guild.get_member(int(self.invited_id))
+        original_channel = guild.get_channel(self.original_channel_id)
+
+        if not self.accepted: # Only send timeout message if not accepted
+            timeout_embed = discord.Embed(
+                title="⏱️ Party Invite Expired",
+                description=f"The party invite from {owner_member.display_name if owner_member else 'an unknown user'} to {invited_member.display_name if invited_member else 'an unknown user'} has expired.",
+                color=discord.Color.orange()
+            )
+            if original_channel:
+                await original_channel.send(embed=timeout_embed)
+            else:
+                print(f"Original channel {self.original_channel_id} not found for party invite timeout.")
         
         # Clean up pending invite
         if self.owner_id in parties and self.invited_id in parties[self.owner_id]["invite_pending"]:
@@ -3301,15 +3569,17 @@ class PartyInviteView(View):
             return
 
         owner_member = interaction.guild.get_member(int(self.owner_id))
+        original_channel = interaction.guild.get_channel(self.original_channel_id)
         
         # Check if either is already in a party
         if str(interaction.user.id) in player_party_map:
             await interaction.response.send_message("You are already in a party!", ephemeral=True)
             return
-        if self.owner_id in player_party_map and player_party_map[self.owner_id] != self.owner_id:
-            await interaction.response.send_message("The party owner is no longer the owner or is in another party.", ephemeral=True)
+        # Ensure owner is still the owner and party exists
+        if self.owner_id not in parties or player_party_map.get(self.owner_id) != self.owner_id:
+            await interaction.response.send_message("The party owner is no longer the owner or the party has been disbanded.", ephemeral=True)
             return
-        if self.owner_id in parties and len(parties[self.owner_id]["members"]) >= 2:
+        if len(parties[self.owner_id]["members"]) >= 2:
             await interaction.response.send_message("This party is already full!", ephemeral=True)
             return
 
@@ -3324,15 +3594,15 @@ class PartyInviteView(View):
         if self.owner_id in parties and self.invited_id in parties[self.owner_id]["invite_pending"]:
             del parties[self.owner_id]["invite_pending"][self.invited_id]
 
-        await interaction.response.send_message(f"You have joined {owner_member.display_name}'s party!", ephemeral=True)
-        if owner_member:
-            try:
-                await owner_member.send(embed=discord.Embed(
-                    title="🎉 Party Invite Accepted!",
-                    description=f"{interaction.user.display_name} has joined your party!",
-                    color=discord.Color.green()
-                ))
-            except discord.Forbidden: pass # Cannot DM
+        response_embed = discord.Embed(
+            title="✅ Party Invite Accepted!",
+            description=f"{interaction.user.display_name} has joined {owner_member.display_name}'s party!",
+            color=discord.Color.green()
+        )
+        if original_channel:
+            await original_channel.send(embed=response_embed)
+        else:
+            await interaction.response.send_message(embed=response_embed, ephemeral=True) # Fallback to ephemeral if channel not found
         
         for child in self.children:
             child.disabled = True
@@ -3346,6 +3616,7 @@ class PartyInviteView(View):
             return
         
         owner_member = interaction.guild.get_member(int(self.owner_id))
+        original_channel = interaction.guild.get_channel(self.original_channel_id)
 
         self.stop() # Stop the view
 
@@ -3353,15 +3624,15 @@ class PartyInviteView(View):
         if self.owner_id in parties and self.invited_id in parties[self.owner_id]["invite_pending"]:
             del parties[self.owner_id]["invite_pending"][self.invited_id]
 
-        await interaction.response.send_message(f"You have declined the party invite from {owner_member.display_name}.", ephemeral=True)
-        if owner_member:
-            try:
-                await owner_member.send(embed=discord.Embed(
-                    title="Party Invite Declined",
-                    description=f"{interaction.user.display_name} has declined your party invite.",
-                    color=discord.Color.red()
-                ))
-            except discord.Forbidden: pass # Cannot DM
+        response_embed = discord.Embed(
+            title="Party Invite Declined",
+            description=f"{interaction.user.display_name} has declined the party invite from {owner_member.display_name}.",
+            color=discord.Color.red()
+        )
+        if original_channel:
+            await original_channel.send(embed=response_embed)
+        else:
+            await interaction.response.send_message(embed=response_embed, ephemeral=True) # Fallback to ephemeral if channel not found
         
         for child in self.children:
             child.disabled = True
@@ -3465,13 +3736,14 @@ async def party_invite(ctx, member: discord.Member):
     try:
         invite_embed = discord.Embed(
             title="💌 Party Invite!",
-            description=f"{ctx.author.display_name} has invited you to their party!",
+            description=f"{ctx.author.display_name} has invited you to their party!\n"
+                        f"Click 'Accept' or 'Decline' below to respond.",
             color=discord.Color.blue()
         )
-        invite_embed.set_footer(text="This invite will expire in 3 minutes.")
+        invite_embed.set_footer(text="This invite will expire in 3 minutes. Powered by asrbw.net")
         
-        view = PartyInviteView(owner_id, invited_id)
-        invite_message = await member.send(embed=invite_embed, view=view)
+        view = PartyInviteView(owner_id, invited_id, ctx.channel.id) # Pass original channel ID
+        invite_message = await ctx.send(embed=invite_embed, view=view) # Send in original channel
         view.message = invite_message # Store message for timeout editing
 
         # Store pending invite
@@ -3479,15 +3751,8 @@ async def party_invite(ctx, member: discord.Member):
 
         embed = discord.Embed(
             title="✅ Party Invite Sent!",
-            description=f"An invite has been sent to {member.mention}.",
+            description=f"An invite has been sent to {member.mention} in this channel.",
             color=discord.Color.green()
-        )
-        await ctx.send(embed=embed)
-    except discord.Forbidden:
-        embed = discord.Embed(
-            title="❌ DM Failed",
-            description=f"Could not send a DM to {member.mention}. They might have DMs disabled.",
-            color=discord.Color.red()
         )
         await ctx.send(embed=embed)
     except Exception as e:
@@ -3502,7 +3767,7 @@ async def party_invite(ctx, member: discord.Member):
 @party_invite.error
 async def party_invite_error(ctx, error):
     if isinstance(error, commands.MissingRequiredArgument):
-        await ctx.send(embed=discord.Embed(title="❓ Missing Argument", description="Please mention the member you want to invite. Usage: `=party invite <@member>`", color=discord.Color.orange()))
+        await ctx.send(embed=discord.Embed(title="❓ Missing Argument", description="Please mention the member to invite. Usage: `=party invite <@member>`", color=discord.Color.blue()))
     elif isinstance(error, commands.MemberNotFound):
         await ctx.send(embed=discord.Embed(title="🔍 Member Not Found", description="Could not find that member. Please mention them properly (e.g., `@Username`).", color=discord.Color.red()))
     else:
@@ -3701,6 +3966,150 @@ async def party_status(ctx):
     embed.set_footer(text="Powered by asrbw.net")
     await ctx.send(embed=embed)
 
+# --- History Feature (New) ---
+@bot.command(name='h')
+@commands.has_any_role(*MODERATION_ROLES_IDS)
+async def history(ctx, user: Union[discord.Member, int]):
+    """
+    (Moderation) Displays the punishment history (strikes, mutes, bans) of a user.
+    Usage: =h <@User|User_ID>
+    """
+    if isinstance(user, int): # If user provided an ID, try to fetch the member
+        try:
+            user = await ctx.guild.fetch_member(user)
+        except discord.NotFound:
+            error_embed = discord.Embed(title="🔍 User Not Found", description=f"Could not find a user with ID `{user}` in this server.", color=discord.Color.red())
+            return await ctx.send(embed=error_embed)
+        except Exception as e:
+            error_embed = discord.Embed(title="⚠️ Error", description=f"An error occurred while fetching user: {e}", color=discord.Color.red())
+            return await ctx.send(embed=error_embed)
+
+    discord_id = str(user.id)
+    
+    records = await execute_query(
+        "SELECT punishment_type, reason, timestamp, moderator_id, duration FROM punishments WHERE user_id = %s ORDER BY timestamp DESC",
+        (discord_id,), fetchall=True
+    )
+
+    embed = discord.Embed(
+        title=f"Punishment History for {user.display_name}",
+        description=f"Showing all recorded moderation actions for {user.mention}.",
+        color=discord.Color.blue(),
+        timestamp=datetime.datetime.utcnow()
+    )
+    embed.set_thumbnail(url=user.display_avatar.url)
+
+    if not records:
+        embed.add_field(name="No History", value="This user has no recorded moderation actions.", inline=False)
+    else:
+        for i, record in enumerate(records):
+            punishment_type = record['punishment_type']
+            reason = record['reason']
+            timestamp_unix = record['timestamp']
+            moderator_id = record['moderator_id']
+            duration = record['duration']
+
+            timestamp_dt = datetime.datetime.fromtimestamp(timestamp_unix, datetime.timezone.utc)
+            moderator = ctx.guild.get_member(int(moderator_id))
+            mod_name = moderator.display_name if moderator else f"Unknown ({moderator_id})"
+
+            field_value = (
+                f"**Type:** {punishment_type.capitalize()}\n"
+                f"**Reason:** {reason}\n"
+                f"**Date:** {timestamp_dt.strftime('%Y-%m-%d %H:%M:%S UTC')}\n"
+                f"**Moderator:** {mod_name}"
+            )
+            if duration and duration.lower() != "n/a":
+                field_value += f"\n**Duration:** {duration}"
+            embed.add_field(name=f"Action #{i+1}", value=field_value, inline=False)
+
+    embed.set_footer(text=f"Requested by {ctx.author.display_name}. Powered by asrbw.net")
+    await ctx.send(embed=embed)
+
+@history.error
+async def history_error(ctx, error):
+    if isinstance(error, commands.MissingAnyRole):
+        await ctx.send(embed=discord.Embed(title="⛔ Permission Denied", description="You do not have permission to use this command. You need a moderation role.", color=discord.Color.red()))
+    elif isinstance(error, commands.MissingRequiredArgument):
+        await ctx.send(embed=discord.Embed(title="❓ Missing Argument", description="Please provide a user to view history. Usage: `=h <@User|User_ID>`", color=discord.Color.blue()))
+    elif isinstance(error, commands.MemberNotFound):
+        await ctx.send(embed=discord.Embed(title="🔍 User Not Found", description="Could not find that user. Please mention them properly (e.g., `@Username` or their ID).", color=discord.Color.red()))
+    elif isinstance(error, commands.BadArgument) and "Could not convert" in str(error):
+        await ctx.send(embed=discord.Embed(title="❌ Invalid Input", description="Invalid user ID format. Please check your input.", color=discord.Color.red()))
+    else:
+        await ctx.send(embed=discord.Embed(title="⚠️ Error", description=f"An unexpected error occurred: {error}", color=discord.Color.red()))
+        print(f"Error in history command: {error}")
+
+# --- Placeholder/Example Functions ---
+
+# This function would typically be called by your Minecraft plugin via a webhook or similar.
+# For demonstration, you can manually call it or create a test command.
+async def process_game_results(game_data: dict):
+    """
+    Processes game results received from the Minecraft plugin,
+    updates player ELO and stats, and logs the game.
+    game_data example:
+    {
+        "game_id": "D8A1A",
+        "game_type": "4v4",
+        "winning_team_name": "Team A", # Optional, for display
+        "mvp_discord_id": "123456789012345678",
+        "player_results": [
+            {"discord_id": "123456789012345678", "is_winner": True, "is_mvp": True, "elo_before": 700, "elo_after": 720, "elo_change": 20, "minecraft_username": "CDTago3"},
+            {"discord_id": "123456789012345679", "is_winner": True, "is_mvp": False, "elo_before": 650, "elo_after": 675, "elo_change": 25, "minecraft_username": "p4cd"},
+            # ... other players
+        ]
+    }
+    """
+    print(f"Processing game results: {game_data}")
+    
+    guild = bot.get_guild(MAIN_GUILD_ID)
+    if not guild:
+        print(f"Guild with ID {MAIN_GUILD_ID} not found for processing game results.")
+        await log_alert(f"Failed to process game results for game {game_data.get('game_id', 'N/A')}: Guild not found.")
+        return
+
+    game_id = game_data.get('game_id', str(uuid.uuid4()))
+    
+    # Apply ELO changes and update stats for each player
+    for player_result in game_data.get('player_results', []):
+        discord_id = player_result['discord_id']
+        is_win = player_result.get('is_winner', False)
+        is_mvp = player_result.get('is_mvp', False)
+        game_type = game_data.get('game_type', 'general') # Game type from plugin
+        
+        # This will update player stats in DB and also their nickname/rank role
+        await apply_stat_changes(discord_id, is_win, game_type, is_mvp, game_id)
+
+    # Generate and send game results image to the dedicated channel
+    games_results_channel = bot.get_channel(GAMES_RESULTS_CHANNEL_ID)
+    if games_results_channel:
+        try:
+            image_buffer = await generate_game_results_image(game_data)
+            file = File(image_buffer, filename=f"game_results_{game_id}.png")
+            await games_results_channel.send(f"📊 **Game {game_id} Results:**", file=file)
+            await log_game_event(f"Game {game_id} finished. Results posted to {games_results_channel.mention}.")
+        except Exception as e:
+            print(f"Error generating/sending game results image for game {game_id}: {e}")
+            await log_alert(f"Error generating/sending game results image for game {game_id}: {e}")
+            # Fallback to text if image fails
+            embed = discord.Embed(
+                title=f"📊 Game {game_id} Results (Image Failed)",
+                description="An error occurred displaying the game results image. Here's a text summary:",
+                color=discord.Color.orange()
+            )
+            winning_players_str = "\n".join([p['minecraft_username'] for p in game_data['player_results'] if p['is_winner']])
+            losing_players_str = "\n".join([p['minecraft_username'] for p in game_data['player_results'] if not p['is_winner']])
+            mvp_player_name = next((p['minecraft_username'] for p in game_data['player_results'] if p.get('is_mvp')), 'N/A')
+
+            embed.add_field(name="Winning Team", value=winning_players_str or "N/A", inline=False)
+            embed.add_field(name="Losing Team", value=losing_players_str or "N/A", inline=False)
+            embed.add_field(name="MVP", value=mvp_player_name, inline=False)
+            embed.set_footer(text=f"Powered by asrbw.net")
+            await games_results_channel.send(embed=embed)
+    else:
+        print(f"Games results channel (ID: {GAMES_RESULTS_CHANNEL_ID}) not found. Cannot post game results.")
+        await log_alert(f"Games results channel (ID: {GAMES_RESULTS_CHANNEL_ID}) not found. Game {game_id} results not posted.")
 
 # --- Run the Bot ---
 bot.run(DISCORD_BOT_TOKEN)
