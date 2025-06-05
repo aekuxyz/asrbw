@@ -241,6 +241,11 @@ async def update_player_elo_in_db(player_id: int, elo_change: int) -> bool:
     async with db_pool.acquire() as conn:
         async with conn.cursor() as cursor:
             try:
+                # Ensure user exists before updating, or add if not present
+                await cursor.execute(
+                    "INSERT IGNORE INTO users (discord_id, minecraft_ign, elo, wins, losses, mvps, streak, verified) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
+                    (player_id, f"User_{player_id}", 0, 0, 0, 0, 0, 0) # Default IGN if not already set
+                )
                 await cursor.execute(
                     "UPDATE users SET elo = elo + %s WHERE discord_id = %s",
                     (elo_change, player_id)
@@ -257,6 +262,12 @@ async def update_streak(player_id: int, won: bool):
     async with db_pool.acquire() as conn:
         async with conn.cursor() as cursor:
             try:
+                # Ensure user exists before updating
+                await cursor.execute(
+                    "INSERT IGNORE INTO users (discord_id, minecraft_ign, elo, wins, losses, mvps, streak, verified) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
+                    (player_id, f"User_{player_id}", 0, 0, 0, 0, 0, 0)
+                )
+                
                 await cursor.execute(
                     "SELECT streak FROM users WHERE discord_id = %s",
                     (player_id,)
@@ -1278,7 +1289,7 @@ class PPPVotingView(discord.ui.View):
 
     @discord.ui.button(label="No", style=discord.ButtonStyle.red)
     async def no_vote(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if interaction.user.id in self.votes_yes or interaction.user.id in self.no_votes:
+        if interaction.user.id in self.votes_yes or interaction.user.id in self.votes_no:
             await interaction.response.send_message("You have already voted.", ephemeral=True)
             return
         
@@ -1911,7 +1922,7 @@ async def unmute_user(ctx: commands.Context, member: discord.Member, *, reason: 
                     fields=[
                         {"name": "User", "value": f"<@{member.id}> ({member.id})", "inline": True},
                         {"name": "Reason", "value": reason, "inline": True},
-                        {"name": "Unmuted By", "value": f"<@{ctx.author.id}>", "inline": True}
+                        {"name": "Unbanned By", "value": f"<@{ctx.author.id}>", "inline": True}
                     ]
                 )
                 await send_log_embed(ctx.guild, MUTE_LOG_CHANNEL_ID, MUTE_LOG_CHANNEL_NAME, log_embed)
@@ -1961,12 +1972,13 @@ async def purge_chat(ctx: commands.Context, message_id: Optional[int] = None):
             await ctx.send(f"An error occurred while purging messages: {e}", delete_after=5)
 
 
-@bot.command(name="admin", description="Admin commands for bot configuration.")
+@bot.group(name="admin", description="Admin commands for bot configuration.") # Changed to bot.group
 @commands.has_any_role(ADMIN_STAFF_ROLE_NAME, MANAGER_ROLE_ROLE_NAME, PI_ROLE_NAME)
 async def admin_group(ctx: commands.Context):
     # This serves as a placeholder for the base =admin command
     # Subcommands will be defined below using @admin_group.command()
-    await ctx.send("Use subcommands like `=admin setpartysize`, `=admin queue`, `=admin queues`, `=admin purgeall`.")
+    if ctx.invoked_subcommand is None:
+        await ctx.send("Use subcommands like `=admin setpartysize`, `=admin queue`, `=admin queues`, `=admin purgeall`.")
 
 @admin_group.command(name="setpartysize")
 @commands.has_any_role(ADMIN_STAFF_ROLE_NAME, MANAGER_ROLE_ROLE_NAME, PI_ROLE_NAME)
