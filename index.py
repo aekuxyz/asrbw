@@ -861,7 +861,7 @@ async def check_expired_punishments():
                 await cursor.execute("UPDATE mutes SET active = FALSE WHERE mute_id = %s", (mute_id,))
                 await conn.commit()
 
-@tasks.loop(days=7)
+@tasks.loop(hours=168)
 async def check_elo_decay():
     """Applies ELO decay to inactive players."""
     if db_pool is None: return
