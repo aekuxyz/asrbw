@@ -28,7 +28,8 @@ CLOSED_TICKETS_CATEGORY_ID = 1379869175106764813 # ID of your "Closed Tickets" c
 STRIKE_REQUESTS_CATEGORY_ID = 1378389076503171083 # ID of your "Strike Requests" category
 
 # Channel IDs (Optional, but recommended for specific channels)
-REGISTER_CHANNEL_ID = 1376879395574124544 # ID of your registration channel
+REGISTER_CHANNEL_ID = 1376879395574124544 # ID of your registration channel (where =register is used)
+REGISTER_LOG_CHANNEL_ID = 123456789012345678 # NEW: ID of your registration logs channel
 BAN_LOG_CHANNEL_ID = 1377355353678811278 # ID of your ban logs channel
 MUTE_LOG_CHANNEL_ID = 1377355376743153775 # ID of your mute logs channel
 STRIKE_LOG_CHANNEL_ID = 1377355415284875425 # ID of your strike logs channel
@@ -42,8 +43,24 @@ STAFF_UPDATES_CHANNEL_ID = 1377306838793453578 # ID of your staff-updates channe
 GAMES_DISPLAY_CHANNEL_ID = 1377353788226011246 # ID of the channel to display game results image
 AFK_VOICE_CHANNEL_ID = 1380096256109707275 # ID of your AFK voice channel
 
+# New Voice Channel IDs for queues - YOU MUST UPDATE THESE WITH YOUR ACTUAL VOICE CHANNEL IDs
+QUEUE_3V3_VC_ID = 123456789012345678 # Placeholder ID for 3v3 Queue Voice Channel
+QUEUE_4V4_VC_ID = 123456789012345679 # Placeholder ID for 4v4 Queue Voice Channel
+QUEUE_3V3_PUPS_VC_ID = 123456789012345680 # Placeholder ID for 3v3 Pups Queue Voice Channel
+QUEUE_4V4_PUPS_VC_ID = 123456789012345681 # Placeholder ID for 4v4 Pups Queue Voice Channel
+
+# Map queue types to their respective voice channel IDs for easy lookup
+QUEUE_VC_MAP = {
+    "3v3": QUEUE_3V3_VC_ID,
+    "4v4": QUEUE_4V4_VC_ID,
+    "3v3_pups": QUEU_3V3_PUPS_VC_ID,
+    "4v4_pups": QUEU_4V4_PUPS_VC_ID
+}
+
+
 # Channel Names (Fallback if IDs are None or channel not found by ID)
 REGISTER_CHANNEL_NAME = "register"
+REGISTER_LOG_CHANNEL_NAME = "registration-logs" # NEW: Name for registration logs
 BAN_LOG_CHANNEL_NAME = "bans"
 MUTE_LOG_CHANNEL_NAME = "mutes"
 STRIKE_LOG_CHANNEL_NAME = "strikes"
@@ -111,19 +128,12 @@ QUEUE_TYPES = {
     "4v4_pups": 8
 }
 
-# Queue system state
-queues: Dict[str, List[int]] = {
-    "3v3": [],
-    "4v4": [],
-    "3v3_pups": [],
-    "4v4_pups": []
-}
-
+# active_games remains for tracking ongoing games
 active_games: Dict[int, Dict[str, Any]] = {} # {game_id: {channel_id, voice_channel_id, players, queue_type, status, teams, captains, current_picker, picking_turn, db_game_id}}
 game_counter = 1
 party_size: Optional[int] = None # None for non-party season, 2, 3, or 4 for party size
 queue_status = True # True if queues are open, False if closed
-active_queues = ["3v3", "4v4"] # Queues active for the current season
+active_queues = ["3v3", "4v4"] # Queues active for the current season (these keys must match QUEUE_VC_MAP)
 
 # Store active polls and strike requests for button interactions
 active_polls: Dict[int, Any] = {} # {poll_message_id: PollView_instance}
@@ -186,10 +196,10 @@ async def get_channel_or_create_category(guild: discord.Guild, id: Optional[int]
                 print(f"Created new '{name}' category with ID: {target.id}")
             else:
                 print(f"Found existing '{name}' category with ID: {target.id}")
-        else:
-            target = discord.utils.get(guild.text_channels, name=name)
+        else: # For text/voice channels, search within all channels
+            target = discord.utils.get(guild.channels, id=id) # Try by ID first, even if not a category
             if not target:
-                target = discord.utils.get(guild.voice_channels, name=name)
+                target = discord.utils.get(guild.channels, name=name) # Then by name
     return target
 
 def get_role_by_name(guild: discord.Guild, role_name: str) -> Optional[discord.Role]:
@@ -535,7 +545,7 @@ async def generate_game_results_image(game_data: Dict[str, Any], winning_team: i
 
 async def generate_player_info_image(ign: str, elo: int, wins: int, losses: int, wlr: float, mvps: int, streak: int):
     """Generates a monochrome image displaying player stats and Minecraft skin."""
-    img_width, img_height = 600, 350 # Increased height for more space
+    img_width, img_height = 600, 450 # Increased height for more space
     bg_color = (30, 30, 30) # Dark grey
     text_color = (220, 220, 220) # Light grey
     accent_color = (150, 150, 150) # Medium grey for highlights
@@ -544,52 +554,45 @@ async def generate_player_info_image(ign: str, elo: int, wins: int, losses: int,
     draw = ImageDraw.Draw(img)
     
     try:
-        font_large = ImageFont.truetype("arial.ttf", 32) # Slightly larger font
-        font_medium = ImageFont.truetype("arial.ttf", 22)
-        font_small = ImageFont.truetype("arial.ttf", 18)
-        font_mono = ImageFont.truetype("arial.ttf", 16) # For stats, if a monospace font is preferred
+        font_large = ImageFont.truetype("arial.ttf", 40) # Larger font
+        font_medium = ImageFont.truetype("arial.ttf", 28) # Larger font
+        font_small = ImageFont.truetype("arial.ttf", 20) # Larger font
+        font_mono = ImageFont.truetype("arial.ttf", 20) # Matching small for consistency
     except IOError:
         font_large = ImageFont.load_default()
         font_medium = ImageFont.load_default()
         font_small = ImageFont.load_default()
         font_mono = ImageFont.load_default()
     
-    # Get Minecraft skin (full body, if possible, otherwise head)
-    # Using a 3D avatar for better visual
+    # Get Minecraft skin (head only)
     skin_img = None
     try:
         async with aiohttp.ClientSession() as session:
-            # Attempt to get a 3D render
-            async with session.get(f"https://mc-heads.net/body/{ign}/150.png") as resp:
+            # Use /avatar/ for head only
+            async with session.get(f"https://mc-heads.net/avatar/{ign}/150.png") as resp:
                 if resp.status == 200:
                     skin_data = io.BytesIO(await resp.read())
                     skin_img = Image.open(skin_data).convert("RGBA")
-                else: # Fallback to avatar if body fails
-                    async with session.get(f"https://mc-heads.net/avatar/{ign}/150.png") as resp_avatar:
-                        if resp_avatar.status == 200:
-                            skin_data = io.BytesIO(await resp_avatar.read())
-                            skin_img = Image.open(skin_data).convert("RGBA")
-
             if skin_img:
                 # Make skin monochrome
                 skin_img = skin_img.convert("L").convert("RGBA") # Convert to grayscale, then back to RGBA for alpha
-                # Resize for consistency and position
-                skin_img = skin_img.resize((150, 250), Image.Resampling.LANCZOS) # Adjust size as needed
-                img.paste(skin_img, (30, 40), skin_img) # Adjusted position
+                # Resize for consistency and position (square for head)
+                skin_img = skin_img.resize((150, 150), Image.Resampling.LANCZOS)
+                img.paste(skin_img, (30, 60), skin_img) # Adjusted position
     except Exception as e:
         print(f"Could not fetch or process skin for {ign}: {e}")
         # Draw a placeholder if skin fails
-        draw.rectangle((30, 40, 180, 290), fill=accent_color, outline=text_color)
-        draw.text((60, 150), "No Skin", font=font_small, fill=text_color)
+        draw.rectangle((30, 60, 180, 210), fill=accent_color, outline=text_color) # Adjusted placeholder size/pos
+        draw.text((60, 120), "No Skin", font=font_small, fill=text_color)
     
     # Draw player info
-    draw.text((200, 40), f"{ign}", font=font_large, fill=text_color)
-    draw.text((200, 90), f"ELO: {elo}", font=font_medium, fill=accent_color)
+    draw.text((200, 60), f"{ign}", font=font_large, fill=text_color)
+    draw.text((200, 120), f"ELO: {elo}", font=font_medium, fill=accent_color)
     
     # Draw stats with better alignment
     stats_x_start = 200
-    stats_y_start = 140
-    line_height = 30
+    stats_y_start = 170 # Adjusted start Y for stats
+    line_height = 35 # Increased line height for larger font
     
     draw.text((stats_x_start, stats_y_start), f"Wins: {wins}", font=font_medium, fill=text_color)
     draw.text((stats_x_start, stats_y_start + line_height), f"Losses: {losses}", font=font_medium, fill=text_color)
@@ -716,20 +719,34 @@ async def sync_db():
 
 @tasks.loop(seconds=10)
 async def check_queues():
-    """Checks active queues and starts games when enough players are present."""
+    """Checks active queues (voice channels) and starts games when enough players are present."""
     global game_counter
     
     if not queue_status:
         return
     
+    guild = bot.guilds[0] # Assuming bot operates in a single guild
+
     for queue_type in active_queues:
         required_players = QUEUE_TYPES[queue_type]
+        queue_vc_id = QUEUE_VC_MAP.get(queue_type)
         
-        if len(queues[queue_type]) >= required_players:
-            players_in_queue = queues[queue_type][:required_players]
-            
-            guild = bot.guilds[0]
+        if not queue_vc_id:
+            print(f"Warning: No voice channel ID configured for queue type: {queue_type}. Skipping.")
+            continue
 
+        queue_voice_channel = guild.get_channel(queue_vc_id)
+        
+        if not queue_voice_channel or not isinstance(queue_voice_channel, discord.VoiceChannel):
+            print(f"Warning: Configured queue voice channel (ID: {queue_vc_id}) for {queue_type} not found or is not a voice channel.")
+            continue
+
+        # Get members currently in the voice channel
+        players_in_queue_vc = [member for member in queue_voice_channel.members if not member.bot] # Exclude bots
+        
+        if len(players_in_queue_vc) >= required_players:
+            players_for_game = players_in_queue_vc[:required_players] # Take exactly the required number of players
+            
             # Determine category for game and voice channels
             game_category = await get_channel_or_create_category(guild, GAME_CATEGORY_ID, "Games", is_category=True)
             voice_category = await get_channel_or_create_category(guild, VOICE_CATEGORY_ID, "Voice Channels", is_category=True)
@@ -746,7 +763,7 @@ async def check_queues():
             )
             
             # Create voice channel
-            voice_channel = await guild.create_voice_channel(
+            game_voice_channel = await guild.create_voice_channel(
                 f"Game #{game_counter:04d}",
                 category=voice_category
             )
@@ -755,14 +772,24 @@ async def check_queues():
             captains: List[int] = []
             description: str = ""
             color: discord.Color = discord.Color.blue()
+
+            # Move players to the new game voice channel
+            for player_member in players_for_game:
+                try:
+                    await player_member.move_to(game_voice_channel)
+                    print(f"Moved {player_member.display_name} to {game_voice_channel.name}")
+                except discord.Forbidden:
+                    print(f"Bot lacks permissions to move {player_member.display_name} to {game_voice_channel.name}")
+                except Exception as e:
+                    print(f"Error moving {player_member.display_name}: {e}")
             
             # --- Party Season Logic vs. Captain Picking ---
             if party_size is not None:
                 # Fair ELO matchmaking for party season
                 players_with_elo = []
-                for p_id in players_in_queue:
-                    elo = await get_player_elo(p_id)
-                    players_with_elo.append({"id": p_id, "elo": elo})
+                for p_member in players_for_game: # Use actual member objects here
+                    elo = await get_player_elo(p_member.id)
+                    players_with_elo.append({"id": p_member.id, "elo": elo})
                 
                 players_with_elo.sort(key=lambda x: x["elo"]) # Sort by ELO ascending
                 
@@ -779,9 +806,9 @@ async def check_queues():
             else:
                 # Non-Party Season (Captain Picking)
                 player_elos = []
-                for player_id in players_in_queue:
-                    elo = await get_player_elo(player_id)
-                    player_elos.append((player_id, elo))
+                for player_member in players_for_game: # Use actual member objects here
+                    elo = await get_player_elo(player_member.id)
+                    player_elos.append((player_member.id, elo))
                 
                 player_elos.sort(key=lambda x: x[1], reverse=True) # Sort by ELO descending
                 
@@ -796,8 +823,80 @@ async def check_queues():
                 description = "Captains have been selected by ELO! Time to pick teams."
                 color = discord.Color.blue() # Corrected color
 
-            # Add more game-related functions and commands here
-            # ... (rest of your check_queues function) ...
+            # Store game data in active_games
+            active_games[game_counter] = {
+                "channel_id": game_channel.id,
+                "voice_channel_id": game_voice_channel.id,
+                "players": [p.id for p in players_for_game], # Store player IDs
+                "queue_type": queue_type,
+                "status": "picking",
+                "teams": teams,
+                "captains": captains,
+                "current_picker": captains[0] if captains else None, # First captain picks first
+                "picking_turn": 0, # Index for picking turns
+                "db_game_id": None # Will be set after DB insert
+            }
+
+            # Insert game into database
+            if db_pool is None: return
+            async with db_pool.acquire() as conn:
+                async with conn.cursor() as cursor:
+                    try:
+                        await cursor.execute(
+                            "INSERT INTO games (queue_type, status) VALUES (%s, %s)",
+                            (queue_type, "picking")
+                        )
+                        db_game_id = cursor.lastrowid
+                        active_games[game_counter]["db_game_id"] = db_game_id
+
+                        # Insert game players into database
+                        for team_num, player_ids in teams.items():
+                            for p_id in player_ids:
+                                await cursor.execute(
+                                    "INSERT INTO game_players (game_id, discord_id, team) VALUES (%s, %s, %s)",
+                                    (db_game_id, p_id, team_num)
+                                )
+                        await conn.commit()
+                        print(f"Game {game_counter} ({queue_type}) started. DB ID: {db_game_id}")
+                    except aiomysql.Error as e:
+                        print(f"Error inserting game into DB: {e}")
+                        # Clean up created channels if DB insertion fails
+                        await game_channel.delete(reason="DB error on game start.")
+                        await game_voice_channel.delete(reason="DB error on game start.")
+                        del active_games[game_counter]
+                        game_counter += 1 # Increment counter even on failure to avoid ID reuse immediately
+                        continue
+            
+            # Announce game start
+            game_announcement_channel = await get_channel_by_config(guild, GAMES_DISPLAY_CHANNEL_ID, GAMES_DISPLAY_CHANNEL_NAME)
+            if game_announcement_channel:
+                await game_announcement_channel.send(
+                    f"A {queue_type} game has started in {game_channel.mention}! Game ID: `{game_counter:04d}`"
+                )
+
+            embed = create_embed(
+                title=f"Game #{game_counter:04d} ({queue_type})",
+                description=description,
+                color=color,
+                fields=[
+                    {"name": "Text Channel", "value": game_channel.mention, "inline": True},
+                    {"name": "Voice Channel", "value": game_voice_channel.mention, "inline": True}
+                ]
+            )
+
+            if party_size is None: # Captain picking
+                captain_mentions = [guild.get_member(c).mention for c in captains if guild.get_member(c)]
+                embed.add_field(name="Captains", value=", ".join(captain_mentions), inline=False)
+                embed.add_field(name="Instructions", value=f"Captains, use `@{bot.user.name} pick <player_name>` to pick players in {game_channel.mention}.", inline=False) # Updated to use bot mention
+            else: # Auto-balancing
+                 embed.add_field(name="Team 1", value="\n".join([guild.get_member(p_id).mention for p_id in teams[1]]), inline=True)
+                 embed.add_field(name="Team 2", value="\n".join([guild.get_member(p_id).mention for p_id in teams[2]]), inline=True)
+
+
+            await game_channel.send(embed=embed)
+            
+            # Increment game counter for the next game
+            game_counter += 1
 
 # Placeholder for check_expired_punishments, check_elo_decay, check_afk_players
 @tasks.loop(hours=1)
@@ -1477,15 +1576,8 @@ async def player_info(ctx: commands.Context, member: Optional[discord.Member] = 
                 # Generate the custom player info image
                 file = await generate_player_info_image(ign, elo, wins, losses, wlr, mvps, streak)
                 
-                embed = discord.Embed(
-                    title=f"{ign}'s Stats",
-                    description=f"Discord: {member.mention}",
-                    color=discord.Color.blue()
-                )
-                embed.set_image(url=f"attachment://player_stats.png")
-                embed.set_footer(text=".gg/asianrbw | asrbw.fun") # Updated footer
-                
-                await ctx.send(file=file, embed=embed)
+                # Send as a direct file attachment instead of inside an embed
+                await ctx.send(file=file)
 
             except aiomysql.Error as e:
                 await ctx.send(f"An error occurred while fetching player info: {e}")
@@ -1493,7 +1585,7 @@ async def player_info(ctx: commands.Context, member: Optional[discord.Member] = 
                 await ctx.send(f"An unexpected error occurred: {e}")
 
 
-# Strike, Ban, Mute commands - Ensure embeds are sent to logs
+# Strike, Ban, Mute commands - Ensure embeds are sent to logs AND chat response
 @bot.command(name="strike")
 @commands.has_any_role(MODERATOR_ROLE_NAME, ADMIN_STAFF_ROLE_NAME, MANAGER_ROLE_ROLE_NAME, PI_ROLE_NAME)
 async def strike(ctx: commands.Context, member: discord.Member, *, reason: str):
@@ -1547,7 +1639,15 @@ async def strike(ctx: commands.Context, member: discord.Member, *, reason: str):
                     ]
                 )
                 await send_log_embed(ctx.guild, STRIKE_LOG_CHANNEL_ID, STRIKE_LOG_CHANNEL_NAME, log_embed)
-                await ctx.send(f"Successfully issued a strike to {member.mention} (Strike ID: `{strike_id}`).")
+                
+                # Send confirmation embed to current channel
+                confirmation_embed = create_embed(
+                    title="Strike Issued",
+                    description=f"Successfully issued a strike to {member.mention} (Strike ID: `{strike_id}`).\nDetails logged in <#{STRIKE_LOG_CHANNEL_ID}>.",
+                    color=discord.Color.red()
+                )
+                await ctx.send(embed=confirmation_embed)
+
             except aiomysql.Error as e:
                 await ctx.send(f"An error occurred: {e}. Ensure the user exists in the database.")
 
@@ -1615,7 +1715,14 @@ async def remove_strike(ctx: commands.Context, strike_id: int, *, reason: str = 
                 )
                 await send_log_embed(ctx.guild, STRIKE_LOG_CHANNEL_ID, STRIKE_LOG_CHANNEL_NAME, log_embed)
                 
-                await ctx.send(f"Successfully removed strike ID `{strike_id}` for <@{target_discord_id}>.")
+                # Send confirmation embed to current channel
+                confirmation_embed = create_embed(
+                    title="Strike Removed",
+                    description=f"Successfully removed strike ID `{strike_id}` for <@{target_discord_id}>.\nDetails logged in <#{STRIKE_LOG_CHANNEL_ID}>.",
+                    color=discord.Color.green()
+                )
+                await ctx.send(embed=confirmation_embed)
+
             except aiomysql.Error as e:
                 await ctx.send(f"An error occurred: {e}")
 
@@ -1716,7 +1823,14 @@ async def ban_user(ctx: commands.Context, member: discord.Member, duration: str,
                     log_embed.add_field(name="Expires At", value=expires_at.strftime("%Y-%m-%d %H:%M:%S UTC"), inline=False)
                 await send_log_embed(ctx.guild, BAN_LOG_CHANNEL_ID, BAN_LOG_CHANNEL_NAME, log_embed)
                 
-                await ctx.send(f"Successfully banned {member.mention} {duration_text} (Ban ID: `{ban_id}`).")
+                # Send confirmation embed to current channel
+                confirmation_embed = create_embed(
+                    title="User Banned",
+                    description=f"Successfully banned {member.mention} {duration_text} (Ban ID: `{ban_id}`).\nDetails logged in <#{BAN_LOG_CHANNEL_ID}>.",
+                    color=discord.Color.red()
+                )
+                await ctx.send(embed=confirmation_embed)
+
             except aiomysql.Error as e:
                 await ctx.send(f"An error occurred while banning: {e}. Ensure the user exists in the database.")
 
@@ -1771,7 +1885,14 @@ async def unban_user(ctx: commands.Context, member: discord.Member, *, reason: s
                 )
                 await send_log_embed(ctx.guild, BAN_LOG_CHANNEL_ID, BAN_LOG_CHANNEL_NAME, log_embed)
                 
-                await ctx.send(f"Successfully unbanned {member.mention}.")
+                # Send confirmation embed to current channel
+                confirmation_embed = create_embed(
+                    title="User Unbanned",
+                    description=f"Successfully unbanned {member.mention}.\nDetails logged in <#{BAN_LOG_CHANNEL_ID}>.",
+                    color=discord.Color.green()
+                )
+                await ctx.send(embed=confirmation_embed)
+
             except aiomysql.Error as e:
                 await ctx.send(f"An error occurred while unbanning: {e}")
 
@@ -1872,7 +1993,14 @@ async def mute_user(ctx: commands.Context, member: discord.Member, duration: str
                     log_embed.add_field(name="Expires At", value=expires_at.strftime("%Y-%m-%d %H:%M:%S UTC"), inline=False)
                 await send_log_embed(ctx.guild, MUTE_LOG_CHANNEL_ID, MUTE_LOG_CHANNEL_NAME, log_embed)
                 
-                await ctx.send(f"Successfully muted {member.mention} {duration_text} (Mute ID: `{mute_id}`).")
+                # Send confirmation embed to current channel
+                confirmation_embed = create_embed(
+                    title="User Muted",
+                    description=f"Successfully muted {member.mention} {duration_text} (Mute ID: `{mute_id}`).\nDetails logged in <#{MUTE_LOG_CHANNEL_ID}>.",
+                    color=discord.Color.orange()
+                )
+                await ctx.send(embed=confirmation_embed)
+
             except aiomysql.Error as e:
                 await ctx.send(f"An error occurred while muting: {e}. Ensure the user exists in the database.")
 
@@ -1927,7 +2055,14 @@ async def unmute_user(ctx: commands.Context, member: discord.Member, *, reason: 
                 )
                 await send_log_embed(ctx.guild, MUTE_LOG_CHANNEL_ID, MUTE_LOG_CHANNEL_NAME, log_embed)
                 
-                await ctx.send(f"Successfully unmuted {member.mention}.")
+                # Send confirmation embed to current channel
+                confirmation_embed = create_embed(
+                    title="User Unmuted",
+                    description=f"Successfully unmuted {member.mention}.\nDetails logged in <#{MUTE_LOG_CHANNEL_ID}>.",
+                    color=discord.Color.green()
+                )
+                await ctx.send(embed=confirmation_embed)
+
             except aiomysql.Error as e:
                 await ctx.send(f"An error occurred while unmuting: {e}")
 
@@ -2018,6 +2153,9 @@ async def admin_set_active_queues(ctx: commands.Context, *queue_types_str: str):
     new_active_queues = []
     for q_type_str in queue_types_str:
         if q_type_str.lower() in valid_types:
+            if q_type_str.lower() not in QUEUE_VC_MAP:
+                await ctx.send(f"Error: Voice channel ID for `{q_type_str}` is not configured in `QUEUE_VC_MAP`. Cannot activate this queue type.", ephemeral=True)
+                return # Stop if a VC is not mapped
             new_active_queues.append(q_type_str.lower())
         else:
             await ctx.send(f"Invalid queue type provided: `{q_type_str}`. Valid types are: {', '.join(valid_types)}", ephemeral=True)
@@ -2403,6 +2541,88 @@ async def score_game(ctx: commands.Context, game_id: int, winning_team: int, mvp
             except Exception as e:
                 await ctx.send(f"An unexpected error occurred during scoring: {e}")
 
+@bot.command(name="register")
+async def register(ctx: commands.Context, ign: str):
+    await ctx.message.add_reaction("✅")
+    if ctx.channel.id != REGISTER_CHANNEL_ID:
+        await ctx.send(f"This command can only be used in <#{REGISTER_CHANNEL_ID}>.", ephemeral=True)
+        return
+
+    if db_pool is None:
+        await ctx.send("Database not connected.")
+        return
+
+    async with db_pool.acquire() as conn:
+        async with conn.cursor() as cursor:
+            try:
+                # Check if IGN is already taken
+                await cursor.execute(
+                    "SELECT discord_id FROM users WHERE minecraft_ign = %s",
+                    (ign,)
+                )
+                if await cursor.fetchone():
+                    await ctx.send(f"The Minecraft IGN `{ign}` is already registered to another user.")
+                    return
+
+                # Check if user is already registered by Discord ID
+                await cursor.execute(
+                    "SELECT verified FROM users WHERE discord_id = %s",
+                    (ctx.author.id,)
+                )
+                existing_user = await cursor.fetchone()
+
+                if existing_user and existing_user[0] == 1:
+                    await ctx.send(f"You are already registered. Your IGN has been updated to `{ign}`.")
+                    await cursor.execute(
+                        "UPDATE users SET minecraft_ign = %s WHERE discord_id = %s",
+                        (ign, ctx.author.id)
+                    )
+                else:
+                    # Insert new registration or update existing unverified entry
+                    await cursor.execute(
+                        "INSERT INTO users (discord_id, minecraft_ign, elo, wins, losses, mvps, streak, verified) VALUES (%s, %s, %s, %s, %s, %s, %s, %s) ON DUPLICATE KEY UPDATE minecraft_ign = VALUES(minecraft_ign), verified = 1",
+                        (ctx.author.id, ign, 0, 0, 0, 0, 0, 1) # Set verified to 1 (True)
+                    )
+                    await ctx.send(f"Congratulations {ctx.author.mention}, you have successfully registered with Minecraft IGN: `{ign}`!")
+
+                await conn.commit()
+
+                # Assign Registered role and remove Unregistered role
+                registered_role = get_role_by_name(ctx.guild, REGISTERED_ROLE_NAME)
+                unregistered_role = get_role_by_name(ctx.guild, UNREGISTERED_ROLE_NAME)
+
+                if registered_role and registered_role not in ctx.author.roles:
+                    try:
+                        await ctx.author.add_roles(registered_role, reason="Self-registered.")
+                    except discord.Forbidden:
+                        print(f"Bot lacks permissions to add {REGISTERED_ROLE_NAME} role to {ctx.author.display_name}.")
+                
+                if unregistered_role and unregistered_role in ctx.author.roles:
+                    try:
+                        await ctx.author.remove_roles(unregistered_role, reason="Self-registered.")
+                    except discord.Forbidden:
+                        print(f"Bot lacks permissions to remove {UNREGISTERED_ROLE_NAME} role from {ctx.author.display_name}.")
+                
+                await update_elo_role(ctx.author.id, await get_player_elo(ctx.author.id)) # Update ELO role and nickname
+
+                # Log to dedicated registration channel
+                log_embed = create_embed(
+                    title="New User Registered",
+                    description=f"{ctx.author.mention} has registered.",
+                    color=discord.Color.green(),
+                    fields=[
+                        {"name": "User", "value": f"<@{ctx.author.id}> ({ctx.author.id})", "inline": True},
+                        {"name": "IGN", "value": ign, "inline": True}
+                    ]
+                )
+                await send_log_embed(ctx.guild, REGISTER_LOG_CHANNEL_ID, REGISTER_LOG_CHANNEL_NAME, log_embed)
+
+            except aiomysql.Error as e:
+                await ctx.send(f"An error occurred during registration: {e}")
+            except Exception as e:
+                await ctx.send(f"An unexpected error occurred during registration: {e}")
+
+
 @bot.command(name="forceregister")
 @commands.has_any_role(STAFF_ROLE_NAME, ADMIN_STAFF_ROLE_NAME, MANAGER_ROLE_ROLE_NAME, PI_ROLE_NAME)
 async def force_register(ctx: commands.Context, member: discord.Member, ign: str):
@@ -2429,6 +2649,18 @@ async def force_register(ctx: commands.Context, member: discord.Member, ign: str
                     )
                     await conn.commit()
                     await ctx.send(f"Updated IGN for {member.mention} to `{ign}`.")
+                    # Log update to staff updates (as requested, updates go here)
+                    log_embed = create_embed(
+                        title="User IGN Updated (Force)",
+                        description=f"{member.mention}'s IGN was updated to `{ign}` by {ctx.author.mention}.",
+                        color=discord.Color.blue(),
+                        fields=[
+                            {"name": "User", "value": f"<@{member.id}> ({member.id})", "inline": True},
+                            {"name": "New IGN", "value": ign, "inline": True},
+                            {"name": "Updated By", "value": f"<@{ctx.author.id}>", "inline": True}
+                        ]
+                    )
+                    await send_log_embed(ctx.guild, STAFF_UPDATES_CHANNEL_ID, STAFF_UPDATES_CHANNEL_NAME, log_embed)
                     return
 
                 # Insert new entry if not registered
@@ -2456,6 +2688,7 @@ async def force_register(ctx: commands.Context, member: discord.Member, ign: str
                 await update_elo_role(member.id, 0) # Set initial ELO role (Iron) and nickname
 
                 await ctx.send(f"Successfully force-registered {member.mention} with IGN: `{ign}`.")
+                # Log new force-registration to dedicated registration channel
                 log_embed = create_embed(
                     title="User Force Registered",
                     description=f"{member.mention} has been force-registered by {ctx.author.mention}.",
@@ -2466,7 +2699,7 @@ async def force_register(ctx: commands.Context, member: discord.Member, ign: str
                         {"name": "Registered By", "value": f"<@{ctx.author.id}>", "inline": True}
                     ]
                 )
-                await send_log_embed(ctx.guild, REGISTER_CHANNEL_ID, REGISTER_CHANNEL_NAME, log_embed) # Assuming register channel for logs
+                await send_log_embed(ctx.guild, REGISTER_LOG_CHANNEL_ID, REGISTER_LOG_CHANNEL_NAME, log_embed)
 
             except aiomysql.Error as e:
                 await ctx.send(f"An error occurred during force registration: {e}")
