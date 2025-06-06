@@ -13,7 +13,7 @@ import io
 import requests
 import aiohttp
 import html
-import json # Added for HTML logging content
+import os
 
 # --- Configuration Section ---
 # IMPORTANT: Replace these with your actual Discord IDs and names.
@@ -29,14 +29,14 @@ STRIKE_REQUESTS_CATEGORY_ID = 1378389076503171083 # ID of your "Strike Requests"
 
 # Channel IDs (Optional, but recommended for specific channels)
 REGISTER_CHANNEL_ID = 1376879395574124544 # ID of your registration channel (where =register is used)
-REGISTER_LOG_CHANNEL_ID = 123456789012345678 # ID of your registration logs channel
+REGISTER_LOG_CHANNEL_ID = 123456789012345678 # NEW: ID of your registration logs channel
 BAN_LOG_CHANNEL_ID = 1377355353678811278 # ID of your ban logs channel
 MUTE_LOG_CHANNEL_ID = 1377355376743153775 # ID of your mute logs channel
 STRIKE_LOG_CHANNEL_ID = 1377355415284875425 # ID of your strike logs channel
-TICKET_CHANNEL_ID = 1377617914177392640 # ID of the channel where users create tickets (for prefix command)
-TICKET_LOG_CHANNEL_ID = 1377617800150913126 # ID of your ticket logs channel (HTML logs)
+TICKET_CHANNEL_ID = 1377617914177392640 # ID of the channel where users create tickets
+TICKET_LOG_CHANNEL_ID = 1377617800150913126 # ID of your ticket logs channel
 STRIKE_REQUEST_CHANNEL_ID = 1377351296868417647 # ID of the channel where users make strike requests
-SCREENSNARE_LOG_CHANNEL_ID = 1377688164923343072 # ID of your screenshare ticket logs channel (HTML logs)
+SCREENSNARE_LOG_CHANNEL_ID = 1377688164923343072 # ID of your screenshare ticket logs channel
 GAME_LOG_CHANNEL_ID = 1377611419234865152 # ID of your game logs channel
 PPP_VOTING_CHANNEL_ID = 1378388708205527110 # ID of your #ppp-voting channel
 STAFF_UPDATES_CHANNEL_ID = 1377306838793453578 # ID of your staff-updates channel
@@ -53,13 +53,14 @@ QUEUE_4V4_PUPS_VC_ID = 123456789012345681 # Placeholder ID for 4v4 Pups Queue Vo
 QUEUE_VC_MAP = {
     "3v3": QUEUE_3V3_VC_ID,
     "4v4": QUEUE_4V4_VC_ID,
-    "3v3_pups": QUEUE_3V3_PUPS_VC_ID, # Corrected typo
-    "4v4_pups": QUEUE_4V4_PUPS_VC_ID # Corrected typo
+    "3v3_pups": QUEUE_3V3_PUPS_VC_ID,
+    "4v4_pups": QUEUE_4V4_PUPS_VC_ID
 }
+
 
 # Channel Names (Fallback if IDs are None or channel not found by ID)
 REGISTER_CHANNEL_NAME = "register"
-REGISTER_LOG_CHANNEL_NAME = "registration-logs"
+REGISTER_LOG_CHANNEL_NAME = "registration-logs" # NEW: Name for registration logs
 BAN_LOG_CHANNEL_NAME = "bans"
 MUTE_LOG_CHANNEL_NAME = "mutes"
 STRIKE_LOG_CHANNEL_NAME = "strikes"
@@ -79,7 +80,7 @@ BANNED_ROLE_NAME = "Banned"
 MUTED_ROLE_NAME = "Muted"
 FROZEN_ROLE_NAME = "Frozen" # Role assigned during screenshare
 PPP_MANAGER_ROLE_NAME = "P.P.P. Manager" # Role for poll command (Pups, Pugs, Premium)
-MANAGER_ROLE_NAME = "Manager" # Role for modify stats command (and above) - Standardized name
+MANAGER_ROLE_ROLE_NAME = "Manager" # Role for modify stats command (and above) # Renamed to avoid conflict
 ADMIN_STAFF_ROLE_NAME = "Administrator" # Role for game commands (and above)
 STAFF_ROLE_NAME = "Staff" # Role for force register command, ticket claim (and above)
 MODERATOR_ROLE_NAME = "Moderator" # Base role for staff commands (e.g., ban, mute, strike)
@@ -89,7 +90,7 @@ SCREENSHARING_TEAM_ROLE_NAME = "Screensharing" # Role for screenshare ticket acc
 # Database connection details
 DB_HOST = "localhost"
 DB_USER = "asrbw-user"
-DB_PASSWORD = "asdfdaf"
+DB_PASSWORD = "Ahmed7644"
 DB_NAME = "asrbw_db"
 
 # Discord Bot Token
@@ -119,6 +120,7 @@ ADMIN_WIN_ELO_CHANGE = 20
 ADMIN_LOSS_ELO_CHANGE = -20
 ADMIN_MVP_ELO_CHANGE = 10
 
+
 QUEUE_TYPES = {
     "3v3": 6,
     "4v4": 8,
@@ -127,7 +129,7 @@ QUEUE_TYPES = {
 }
 
 # active_games remains for tracking ongoing games
-active_games: Dict[int, Dict[str, Any]] = {} # {game_id: {channel_id, voice_channel_id, players, queue_type, status, teams, captains, current_picker, picking_turn, db_game_id, last_activity_timestamp}}
+active_games: Dict[int, Dict[str, Any]] = {} # {game_id: {channel_id, voice_channel_id, players, queue_type, status, teams, captains, current_picker, picking_turn, db_game_id}}
 game_counter = 1
 party_size: Optional[int] = None # None for non-party season, 2, 3, or 4 for party size
 queue_status = True # True if queues are open, False if closed
@@ -163,8 +165,6 @@ async def setup_db_pool():
 
 # --- Bot Setup ---
 intents = discord.Intents.all()
-intents.members = True # Ensure member intents are enabled for role/nickname management
-intents.voice_states = True # Required for checking voice channel activity
 bot = commands.Bot(command_prefix='=', intents=intents)
 
 # --- Helper Functions ---
@@ -178,8 +178,24 @@ def create_embed(title: str, description: str, color: discord.Color, fields: Opt
     if fields:
         for field in fields:
             embed.add_field(name=field['name'], value=field['value'], inline=field.get('inline', False))
-    embed.set_footer(text="asrbw.fun")
+    embed.set_footer(text="asrbw.fun") # Changed footer
     return embed
+
+async def _send_error_embed(interaction: Union[discord.Interaction, commands.Context], message: str):
+    """Helper to send consistent error embeds."""
+    embed = create_embed(
+        title="Error",
+        description=message,
+        color=discord.Color.red()
+    )
+    if isinstance(interaction, discord.Interaction):
+        # Check if response has already been sent
+        if interaction.response.is_done():
+            await interaction.followup.send(embed=embed, ephemeral=True)
+        else:
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+    elif isinstance(interaction, commands.Context):
+        await interaction.send(embed=embed)
 
 async def get_channel_or_create_category(guild: discord.Guild, id: Optional[int], name: str, is_category: bool = False):
     """
@@ -227,53 +243,6 @@ async def send_log_embed(guild: discord.Guild, channel_id: Optional[int], channe
     except Exception as e:
         print(f"Error sending embed log to {log_channel.name}: {e}")
 
-async def send_log_html(guild: discord.Guild, channel_id: Optional[int], channel_name: str, title: str, content_dict: Dict[str, Any]):
-    """Sends an HTML formatted message to a specified log channel."""
-    log_channel = await get_channel_by_config(guild, channel_id, channel_name)
-    if not log_channel or not isinstance(log_channel, discord.TextChannel):
-        print(f"Warning: HTML Log channel '{channel_name}' (ID: {channel_id}) not found or is not a text channel.")
-        return
-
-    # Basic HTML structure
-    html_content = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>{html.escape(title)}</title>
-        <style>
-            body {{ font-family: sans-serif; background-color: #2c2f33; color: #ffffff; padding: 20px; }}
-            .container {{ background-color: #36393f; border-radius: 8px; padding: 20px; margin-bottom: 10px; }}
-            h2 {{ color: #7289da; border-bottom: 2px solid #7289da; padding-bottom: 5px; margin-top: 0; }}
-            p {{ margin-bottom: 5px; }}
-            strong {{ color: #99aab5; }}
-            .field {{ margin-top: 10px; }}
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <h2>{html.escape(title)}</h2>
-    """
-
-    for key, value in content_dict.items():
-        html_content += f'<p><strong>{html.escape(key)}:</strong> {html.escape(str(value))}</p>\n'
-    
-    html_content += """
-        </div>
-    </body>
-    </html>
-    """
-    
-    # Send as a file if content is too long for a single message, or as a code block
-    try:
-        if len(html_content) > 1900: # Discord message limit is 2000 chars, leave some buffer
-            file = discord.File(io.BytesIO(html_content.encode('utf-8')), filename=f"{title.lower().replace(' ', '_')}_log_{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}.html")
-            await log_channel.send(content=f"Log for '{title}':", file=file)
-        else:
-            await log_channel.send(f"```html\n{html_content}\n```")
-    except discord.Forbidden:
-        print(f"Bot lacks permissions to send messages/files in {log_channel.name}.")
-    except Exception as e:
-        print(f"Error sending HTML log to {log_channel.name}: {e}")
 
 # --- ELO and Role Management ---
 async def get_player_elo(player_id: int) -> int:
@@ -477,35 +446,38 @@ async def get_game_data_from_db(game_id: int) -> Optional[Dict[str, Any]]:
                 print(f"Error fetching game data from DB: {e}")
                 return None
 
-async def cleanup_game_channels(game_channel_id: int, game_voice_channel_id: int, reason: str):
-    """Deletes game-related channels."""
-    guild = bot.guilds[0] # Assuming bot operates in a single guild
-
+async def cleanup_game(game_id: int):
+    """Deletes game-related channels and removes game from active_games."""
+    if game_id not in active_games:
+        return
+    
+    game_data = active_games[game_id]
+    
     # Delete text channel
     try:
-        channel = guild.get_channel(game_channel_id)
+        channel = bot.get_channel(game_data["channel_id"])
         if channel and isinstance(channel, discord.TextChannel):
-            await channel.delete(reason=reason)
-            print(f"Deleted text channel {channel.name} for game.")
+            await channel.delete(reason=f"Game #{game_id} concluded.")
     except discord.NotFound:
-        print(f"Text channel for game {game_channel_id} already deleted.")
+        print(f"Text channel for game {game_id} already deleted.")
     except discord.Forbidden:
-        print(f"Bot lacks permissions to delete text channel for game {game_channel_id}.")
+        print(f"Bot lacks permissions to delete text channel for game {game_id}.")
     except Exception as e:
-        print(f"Error deleting text channel for game {game_channel_id}: {e}")
+        print(f"Error deleting text channel for game {game_id}: {e}")
     
     # Delete voice channel
     try:
-        voice_channel = guild.get_channel(game_voice_channel_id)
+        voice_channel = bot.get_channel(game_data["voice_channel_id"])
         if voice_channel and isinstance(voice_channel, discord.VoiceChannel):
-            await voice_channel.delete(reason=reason)
-            print(f"Deleted voice channel {voice_channel.name} for game.")
+            await voice_channel.delete(reason=f"Game #{game_id} concluded.")
     except discord.NotFound:
-        print(f"Voice channel for game {game_voice_channel_id} already deleted.")
+        print(f"Voice channel for game {game_id} already deleted.")
     except discord.Forbidden:
-        print(f"Bot lacks permissions to delete voice channel for game {game_voice_channel_id}.")
+        print(f"Bot lacks permissions to delete voice channel for game {game_id}.")
     except Exception as e:
-        print(f"Error deleting voice channel for game {game_voice_channel_id}: {e}")
+        print(f"Error deleting voice channel for game {game_id}: {e}")
+    
+    del active_games[game_id]
 
 async def generate_game_results_image(game_data: Dict[str, Any], winning_team: int, mvp_player_id: int):
     """Generates a monochrome image displaying game results."""
@@ -519,6 +491,7 @@ async def generate_game_results_image(game_data: Dict[str, Any], winning_team: i
 
     try:
         # Attempt to load a common font, or fall back to default
+        # For custom fonts, replace "arial.ttf" with the path to your .ttf file.
         font_large = ImageFont.truetype("arial.ttf", 30)
         font_medium = ImageFont.truetype("arial.ttf", 22)
         font_small = ImageFont.truetype("arial.ttf", 18)
@@ -580,6 +553,7 @@ async def generate_game_results_image(game_data: Dict[str, Any], winning_team: i
     gg_width = gg_bbox[2] - gg_bbox[0]
     draw.text((img_width - gg_width - 10, img_height - 25), gg_text, font=font_small, fill=text_color)
 
+
     img_bytes = io.BytesIO()
     img.save(img_bytes, format='PNG')
     img_bytes.seek(0)
@@ -597,6 +571,8 @@ async def generate_player_info_image(ign: str, elo: int, wins: int, losses: int,
     draw = ImageDraw.Draw(img)
     
     try:
+        # Using a more universally available font or ensure 'arial.ttf' is present on your system
+        # For custom fonts, replace "arial.ttf" with the path to your .ttf file.
         font_large = ImageFont.truetype("arial.ttf", 40) # Larger font
         font_medium = ImageFont.truetype("arial.ttf", 28) # Larger font
         font_small = ImageFont.truetype("arial.ttf", 20) # Larger font
@@ -612,7 +588,7 @@ async def generate_player_info_image(ign: str, elo: int, wins: int, losses: int,
     try:
         async with aiohttp.ClientSession() as session:
             # Use /avatar/ for head only
-            async with session.get(f"https://mc-heads.net/avatar/{ign}/150.png") as resp:
+            async with session.get(f"[https://mc-heads.net/avatar/](https://mc-heads.net/avatar/){ign}/150.png") as resp:
                 if resp.status == 200:
                     skin_data = io.BytesIO(await resp.read())
                     skin_img = Image.open(skin_data).convert("RGBA")
@@ -668,7 +644,6 @@ async def on_ready():
     check_elo_decay.start()
     sync_db.start()
     check_afk_players.start()
-    cleanup_completed_games.start() # New task for game channel cleanup
     # Sync slash commands (if any are defined using @bot.tree.command)
     try:
         synced = await bot.tree.sync()
@@ -679,13 +654,14 @@ async def on_ready():
     # Set bot status
     await bot.change_presence(activity=discord.Activity(type=discord.ActivityType.listening, name="asrbw.fun"))
 
+
 @bot.event
 async def on_member_update(before: discord.Member, after: discord.Member):
     """Monitors role changes for staff promotions/demotions."""
     staff_roles_config = {
         MODERATOR_ROLE_NAME: 1,
         ADMIN_STAFF_ROLE_NAME: 2,
-        MANAGER_ROLE_NAME: 3, # Standardized name
+        MANAGER_ROLE_ROLE_NAME: 3, # Use the renamed variable
         PI_ROLE_NAME: 4
     }
     
@@ -732,41 +708,17 @@ async def on_member_update(before: discord.Member, after: discord.Member):
 
 @bot.event
 async def on_message(message: discord.Message):
-    """Handles messages for game picking phase (if applicable)."""
+    """Handles messages for game picking phase."""
     if message.author == bot.user:
         return
     
-    # This part needs a proper `handle_pick` function if picking is manual
-    # For now, I'll remove the call to handle_pick to prevent errors if it's not defined
-    # If you intend to have manual picking, you need to define `handle_pick`
-    # for game voice channels and other relevant conditions.
-    # for game_id, game_data in active_games.items():
-    #     if message.channel.id == game_data["channel_id"] and game_data["status"] == "picking":
-    #         await handle_pick(message, game_id, game_data)
-    #         break # Only handle one game per message
+    # Check if message is in a game channel for picking
+    for game_id, game_data in active_games.items():
+        if message.channel.id == game_data["channel_id"] and game_data["status"] == "picking":
+            await handle_pick(message, game_id, game_data)
+            break # Only handle one game per message
     
     await bot.process_commands(message)
-
-@bot.event
-async def on_voice_state_update(member: discord.Member, before: discord.VoiceState, after: discord.VoiceState):
-    """
-    Tracks voice state changes for AFK detection in game voice channels.
-    Updates last_activity_timestamp in active_games for members in game VCs.
-    """
-    # Check if the member is in an active game voice channel
-    for game_id, game_data in list(active_games.items()): # Use list to avoid RuntimeError: dictionary changed size during iteration
-        if game_data["voice_channel_id"] == (before.channel.id if before.channel else None) or \
-           game_data["voice_channel_id"] == (after.channel.id if after.channel else None):
-            
-            # If member moved into or out of a relevant game VC, or state changed within it
-            if member.id in game_data["players"]:
-                # If they are in the game VC and not self-deafened, update activity
-                if after.channel and after.channel.id == game_data["voice_channel_id"] and not after.self_deaf and not after.self_mute:
-                    game_data["last_activity_timestamp"] = datetime.datetime.now()
-                # If they leave the channel, or deafen, etc., their activity stops
-                # The AFK check will handle moving them after a timeout.
-                active_games[game_id] = game_data # Update the global dict
-
 
 # --- Background Tasks ---
 @tasks.loop(minutes=5)
@@ -901,8 +853,7 @@ async def check_queues():
                 "captains": captains,
                 "current_picker": captains[0] if captains else None, # First captain picks first
                 "picking_turn": 0, # Index for picking turns
-                "db_game_id": None, # Will be set after DB insert
-                "last_activity_timestamp": datetime.datetime.now() # Initialize for AFK check
+                "db_game_id": None # Will be set after DB insert
             }
 
             # Insert game into database
@@ -911,8 +862,8 @@ async def check_queues():
                 async with conn.cursor() as cursor:
                     try:
                         await cursor.execute(
-                            "INSERT INTO games (queue_type, status, text_channel_id, voice_channel_id) VALUES (%s, %s, %s, %s)",
-                            (queue_type, "picking", game_channel.id, game_voice_channel.id) # Store channel IDs in DB
+                            "INSERT INTO games (queue_type, status) VALUES (%s, %s)",
+                            (queue_type, "picking")
                         )
                         db_game_id = cursor.lastrowid
                         active_games[game_counter]["db_game_id"] = db_game_id
@@ -929,7 +880,8 @@ async def check_queues():
                     except aiomysql.Error as e:
                         print(f"Error inserting game into DB: {e}")
                         # Clean up created channels if DB insertion fails
-                        await cleanup_game_channels(game_channel.id, game_voice_channel.id, "DB error on game start.")
+                        await game_channel.delete(reason="DB error on game start.")
+                        await game_voice_channel.delete(reason="DB error on game start.")
                         del active_games[game_counter]
                         game_counter += 1 # Increment counter even on failure to avoid ID reuse immediately
                         continue
@@ -965,6 +917,7 @@ async def check_queues():
             # Increment game counter for the next game
             game_counter += 1
 
+# Placeholder for check_expired_punishments, check_elo_decay, check_afk_players
 @tasks.loop(hours=1)
 async def check_expired_punishments():
     """Checks for and removes expired bans and mutes."""
@@ -1048,7 +1001,7 @@ async def check_elo_decay():
 
 @tasks.loop(minutes=1)
 async def check_afk_players():
-    """Moves AFK players from game VCs to the AFK voice channel if idle for 5 minutes."""
+    """Moves AFK players to the AFK voice channel."""
     guild = bot.guilds[0]
     afk_channel = guild.get_channel(AFK_VOICE_CHANNEL_ID)
 
@@ -1056,88 +1009,31 @@ async def check_afk_players():
         print("AFK voice channel not configured or not found.")
         return
 
-    current_time = datetime.datetime.now()
-    idle_threshold = datetime.timedelta(minutes=5)
-
-    for game_id, game_data in list(active_games.items()):
-        game_voice_channel_id = game_data.get("voice_channel_id")
-        if not game_voice_channel_id:
-            continue
-        
-        game_voice_channel = guild.get_channel(game_voice_channel_id)
-        if not game_voice_channel or not isinstance(game_voice_channel, discord.VoiceChannel):
-            continue
-
-        for member_id in game_data["players"]:
-            member = guild.get_member(member_id)
-            if not member or not member.voice or member.voice.channel != game_voice_channel:
-                continue # Member not in this game VC or no longer in VC
-
-            # Check if member is idle (self-deafened or self-muted)
-            # Or if their last_activity_timestamp exceeds the threshold
-            if (member.voice.self_deaf or member.voice.self_mute) or \
-               (game_data.get("last_activity_timestamp") and (current_time - game_data["last_activity_timestamp"]) > idle_threshold):
+    for member in guild.members:
+        if member.voice and member.voice.channel and member.voice.channel.id != afk_channel.id:
+            # Check if member is AFK (e.g., deafened, or in an AFK timeout state)
+            # Discord's built-in AFK handling is usually sufficient, but if you have custom logic
+            # for "AFK" state (e.g., idle for X minutes in a voice channel), implement it here.
+            # For simplicity, we'll just check if they are self-deafened.
+            if member.voice.self_deaf or member.voice.afk: # afk property usually means in server's AFK channel
                 try:
-                    # Move to AFK channel if not already there
-                    if member.voice.channel.id != afk_channel.id:
-                        await member.move_to(afk_channel, reason="AFK in game voice channel.")
-                        print(f"Moved {member.display_name} to AFK channel from game VC.")
-                        # Reset last_activity_timestamp if moved to AFK
-                        game_data["last_activity_timestamp"] = datetime.datetime.now() # Prevents immediate re-move
+                    await member.move_to(afk_channel)
+                    print(f"Moved {member.display_name} to AFK channel.")
                 except discord.Forbidden:
                     print(f"Bot lacks permissions to move {member.display_name} to AFK channel.")
                 except Exception as e:
                     print(f"Error moving {member.display_name} to AFK channel: {e}")
 
-@tasks.loop(minutes=2) # Check every 2 minutes for completed games
-async def cleanup_completed_games():
-    """Checks for completed games in DB and deletes their associated Discord channels."""
-    if db_pool is None: return
-    guild = bot.guilds[0]
-
-    async with db_pool.acquire() as conn:
-        async with conn.cursor(aiomysql.DictCursor) as cursor:
-            try:
-                await cursor.execute(
-                    "SELECT game_id, text_channel_id, voice_channel_id FROM games WHERE status = 'completed'"
-                )
-                completed_games = await cursor.fetchall()
-
-                for game in completed_games:
-                    game_id = game['game_id']
-                    text_channel_id = game['text_channel_id']
-                    voice_channel_id = game['voice_channel_id']
-
-                    # Ensure channels exist in active_games before proceeding to delete
-                    # This prevents trying to delete channels already removed by manual cleanup
-                    if game_id in active_games:
-                        await cleanup_game_channels(text_channel_id, voice_channel_id, f"Game #{game_id} concluded and channels cleaned up.")
-                        del active_games[game_id] # Remove from active_games tracking
-
-                    # Optionally, update status in DB to 'cleaned_up' to avoid repeated attempts
-                    await cursor.execute(
-                        "UPDATE games SET status = 'cleaned_up' WHERE game_id = %s",
-                        (game_id,)
-                    )
-                    await conn.commit()
-
-            except aiomysql.Error as e:
-                print(f"Error checking/cleaning up completed games: {e}")
-            except Exception as e:
-                print(f"Unexpected error in cleanup_completed_games: {e}")
-
-
-# --- Views for interactions (StrikeRequestView, ScreenshareView, TicketView, PPPVotingView) ---
+# --- Views for interactions (StrikeRequestView, ScreenshareView, TicketView, PPPVotingView - placeholders) ---
 
 class StrikeRequestView(discord.ui.View):
     def __init__(self, target_user: discord.Member, reason: str, requestor: discord.Member):
-        super().__init__(timeout=600) # Increased timeout to 10 minutes
+        super().__init__(timeout=60) # Changed timeout to 60 seconds
         self.target_user = target_user
         self.reason = reason
         self.yes_votes = set()
         self.no_votes = set()
         self.requestor = requestor
-        self.message = None # To store the message this view is attached to
 
     async def update_message(self, interaction: discord.Interaction):
         required_votes = 3 # Example: 3 votes needed
@@ -1154,24 +1050,21 @@ class StrikeRequestView(discord.ui.View):
                 {"name": "Status", "value": f"Awaiting {required_votes - yes_count} more positive votes.", "inline": False}
             ]
         )
-        if self.message:
-            await self.message.edit(embed=embed, view=self)
-        else:
-            await interaction.message.edit(embed=embed, view=self)
+        await interaction.message.edit(embed=embed, view=self)
 
     @discord.ui.button(label="Yes", style=discord.ButtonStyle.green, emoji="👍")
     async def yes_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.user.id in self.yes_votes or interaction.user.id in self.no_votes:
-            await interaction.response.send_message("You have already voted.", ephemeral=True)
+            await _send_error_embed(interaction, "You have already voted on this strike request.")
             return
         
         # Check if user has staff role (Moderator, Admin, Manager, PI)
         staff_roles = [get_role_by_name(interaction.guild, MODERATOR_ROLE_NAME),
                         get_role_by_name(interaction.guild, ADMIN_STAFF_ROLE_NAME),
-                        get_role_by_name(interaction.guild, MANAGER_ROLE_NAME), # Standardized role name
+                        get_role_by_name(interaction.guild, MANAGER_ROLE_ROLE_NAME),
                         get_role_by_name(interaction.guild, PI_ROLE_NAME)]
         if not any(role in interaction.user.roles for role in staff_roles if role):
-            await interaction.response.send_message("You need a staff role to vote on strike requests.", ephemeral=True)
+            await _send_error_embed(interaction, "You need a staff role to vote on strike requests.")
             return
 
         self.yes_votes.add(interaction.user.id)
@@ -1184,7 +1077,9 @@ class StrikeRequestView(discord.ui.View):
 
             # Apply strike logic here
             strike_time = datetime.datetime.now()
-            if db_pool is None: return
+            if db_pool is None:
+                await _send_error_embed(interaction, "Database not connected, cannot apply strike.")
+                return
 
             async with db_pool.acquire() as conn:
                 async with conn.cursor() as cursor:
@@ -1235,27 +1130,26 @@ class StrikeRequestView(discord.ui.View):
                             try:
                                 await interaction.message.channel.delete(reason="Strike request approved and processed.")
                             except discord.Forbidden:
-                                print(f"Bot lacks permissions to delete strike request channel.")
+                                await _send_error_embed(interaction, "I lack permissions to delete the strike request channel.")
                             except Exception as e:
-                                print(f"Error deleting strike request channel: {e}")
+                                await _send_error_embed(interaction, f"An error occurred deleting the strike request channel: {e}")
 
                     except aiomysql.Error as e:
-                        print(f"Error applying strike to DB: {e}")
-                        await interaction.message.channel.send("An error occurred while applying the strike to the database.")
+                        await _send_error_embed(interaction, f"An error occurred while applying the strike to the database: {e}")
 
     @discord.ui.button(label="No", style=discord.ButtonStyle.red, emoji="👎")
     async def no_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.user.id in self.yes_votes or interaction.user.id in self.no_votes:
-            await interaction.response.send_message("You have already voted.", ephemeral=True)
+            await _send_error_embed(interaction, "You have already voted on this strike request.")
             return
 
         # Check if user has staff role
         staff_roles = [get_role_by_name(interaction.guild, MODERATOR_ROLE_NAME),
                         get_role_by_name(interaction.guild, ADMIN_STAFF_ROLE_NAME),
-                        get_role_by_name(interaction.guild, MANAGER_ROLE_NAME), # Standardized role name
+                        get_role_by_name(interaction.guild, MANAGER_ROLE_ROLE_NAME),
                         get_role_by_name(interaction.guild, PI_ROLE_NAME)]
         if not any(role in interaction.user.roles for role in staff_roles if role):
-            await interaction.response.send_message("You need a staff role to vote on strike requests.", ephemeral=True)
+            await _send_error_embed(interaction, "You need a staff role to vote on strike requests.")
             return
 
         self.no_votes.add(interaction.user.id)
@@ -1267,64 +1161,36 @@ class StrikeRequestView(discord.ui.View):
         required_votes = 3 # Example: 3 votes needed
         yes_count = len(self.yes_votes)
         
-        if self.message:
-            if yes_count < required_votes:
-                await self.message.channel.send("Strike request timed out due to insufficient positive votes. Ticket will now be deleted.")
-                # Delete the ticket channel if it times out without enough votes
+        if yes_count < required_votes:
+            channel = self.message.channel
+            await channel.send("Strike request timed out due to insufficient positive votes. Ticket will now be deleted.")
+            # Delete the ticket channel if it times out without enough votes
+            if channel:
                 try:
-                    await self.message.channel.delete(reason="Strike request timed out.")
+                    await channel.delete(reason="Strike request timed out.")
                 except discord.Forbidden:
                     print(f"Bot lacks permissions to delete strike request channel on timeout.")
                 except Exception as e:
                     print(f"Error deleting strike request channel on timeout: {e}")
-            else:
-                # If for some reason it timed out but had enough votes (should be handled by stop() in button callback)
-                pass
+        else:
+            # If for some reason it timed out but had enough votes (should be handled by stop() in button callback)
+            pass
 
 class ScreenshareView(discord.ui.View):
     def __init__(self, target_user: discord.Member):
         super().__init__(timeout=600)  # 10 minutes timeout
         self.target_user = target_user
         self.claimed_by: Optional[discord.Member] = None
-        self.message = None # To store the message this view is attached to
 
-    async def on_timeout(self):
-        # Remove Frozen role from user if ticket times out
-        frozen_role = get_role_by_name(self.target_user.guild, FROZEN_ROLE_NAME)
-        if frozen_role and frozen_role in self.target_user.roles:
-            try:
-                await self.target_user.remove_roles(frozen_role, reason="Screenshare ticket timed out.")
-                print(f"Removed Frozen role from {self.target_user.display_name} due to timeout.")
-            except discord.Forbidden:
-                print(f"Bot lacks permissions to remove Frozen role from {self.target_user.display_name}")
-            except Exception as e:
-                print(f"Error removing Frozen role on timeout: {e}")
-
-        # Delete the ticket channel
-        if self.message and self.message.channel:
-            try:
-                await self.message.channel.delete(reason="Screenshare ticket timed out.")
-            except discord.Forbidden:
-                print(f"Bot lacks permissions to delete screenshare ticket channel on timeout.")
-            except Exception as e:
-                print(f"Error deleting screenshare ticket channel on timeout: {e}")
-        
-        log_content = {
-            "User": f"<@{self.target_user.id}> ({self.target_user.id})",
-            "Status": "Timed Out",
-            "Reason": "Screenshare request timed out without being resolved."
-        }
-        await send_log_html(self.target_user.guild, SCREENSNARE_LOG_CHANNEL_ID, SCREENSNARE_LOG_CHANNEL_NAME, "Screenshare Ticket Timed Out", log_content)
-
-    @discord.ui.button(label="Claim", style=discord.ButtonStyle.primary, emoji="✋", custom_id="screenshare_claim")
+    @discord.ui.button(label="Claim", style=discord.ButtonStyle.primary, emoji="✋")
     async def claim_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         staff_role = get_role_by_name(interaction.guild, SCREENSHARING_TEAM_ROLE_NAME)
         if not staff_role or staff_role not in interaction.user.roles:
-            await interaction.response.send_message("You must be a Screensharing team member to claim this ticket.", ephemeral=True)
+            await _send_error_embed(interaction, "You must be a Screensharing team member to claim this ticket.")
             return
 
         if self.claimed_by is not None:
-            await interaction.response.send_message(f"This ticket has already been claimed by {self.claimed_by.mention}.", ephemeral=True)
+            await _send_error_embed(interaction, f"This ticket has already been claimed by {self.claimed_by.mention}.")
             return
 
         self.claimed_by = interaction.user
@@ -1332,36 +1198,31 @@ class ScreenshareView(discord.ui.View):
         button.style = discord.ButtonStyle.green
         button.disabled = True
         
-        # Enable the "Close Screenshare" button
-        for item in self.children:
-            if isinstance(item, discord.ui.Button) and item.custom_id == "screenshare_close":
-                item.disabled = False
-                break
+        # Add a "Close" button when claimed
+        self.add_item(discord.ui.Button(label="Close Screenshare", style=discord.ButtonStyle.red, custom_id="close_ss_ticket"))
 
         await interaction.message.edit(view=self)
         await interaction.response.send_message(f"You have claimed the screenshare ticket for {self.target_user.mention}.", ephemeral=True)
 
-        log_content = {
-            "User": f"<@{self.target_user.id}> ({self.target_user.id})",
-            "Claimed By": f"<@{self.claimed_by.id}> ({self.claimed_by.id})",
-            "Ticket Channel": interaction.channel.mention
-        }
-        await send_log_html(interaction.guild, SCREENSNARE_LOG_CHANNEL_ID, SCREENSNARE_LOG_CHANNEL_NAME, "Screenshare Ticket Claimed", log_content)
+        embed = create_embed(
+            title="Screenshare Ticket Claimed",
+            description=f"Ticket for {self.target_user.mention} has been claimed by {self.claimed_by.mention}.",
+            color=discord.Color.blue()
+        )
+        await send_log_embed(interaction.guild, SCREENSNARE_LOG_CHANNEL_ID, SCREENSNARE_LOG_CHANNEL_NAME, embed)
 
-    @discord.ui.button(label="Close Screenshare", style=discord.ButtonStyle.red, emoji="❌", custom_id="screenshare_close", disabled=True)
+    @discord.ui.button(label="Close Screenshare", style=discord.ButtonStyle.red, custom_id="close_ss_ticket", disabled=True)
     async def close_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         # Allow only the person who claimed or Admin+ to close
         is_admin_plus = any(role in interaction.user.roles for role in [
             get_role_by_name(interaction.guild, ADMIN_STAFF_ROLE_NAME),
-            get_role_by_name(interaction.guild, MANAGER_ROLE_NAME), # Standardized role name
+            get_role_by_name(interaction.guild, MANAGER_ROLE_ROLE_NAME),
             get_role_by_name(interaction.guild, PI_ROLE_NAME)
         ] if role)
 
-        if self.claimed_by and self.claimed_by != interaction.user and not is_admin_plus:
-            await interaction.response.send_message("Only the person who claimed this ticket or an Administrator+ can close it.", ephemeral=True)
+        if self.claimed_by != interaction.user and not is_admin_plus:
+            await _send_error_embed(interaction, "Only the person who claimed this ticket or an Administrator+ can close it.")
             return
-        
-        await interaction.response.defer(ephemeral=True) # Acknowledge the interaction
 
         self.stop() # Stop the view
 
@@ -1376,61 +1237,195 @@ class ScreenshareView(discord.ui.View):
             except Exception as e:
                 print(f"Error removing Frozen role: {e}")
 
-        log_content = {
-            "User": f"<@{self.target_user.id}> ({self.target_user.id})",
-            "Closed By": f"<@{interaction.user.id}> ({interaction.user.id})",
-            "Ticket Channel": interaction.channel.mention
-        }
-        await send_log_html(interaction.guild, SCREENSNARE_LOG_CHANNEL_ID, SCREENSNARE_LOG_CHANNEL_NAME, "Screenshare Ticket Closed", log_content)
+        embed = create_embed(
+            title="Screenshare Ticket Closed",
+            description=f"Screenshare ticket for {self.target_user.mention} has been closed by {interaction.user.mention}.",
+            color=discord.Color.green()
+        )
+        await send_log_embed(interaction.guild, SCREENSNARE_LOG_CHANNEL_ID, SCREENSNARE_LOG_CHANNEL_NAME, embed)
         
-        await interaction.followup.send(f"Screenshare ticket for {self.target_user.mention} has been closed.")
+        await interaction.response.send_message(f"Screenshare ticket for {self.target_user.mention} has been closed.")
         
         # Delete the ticket channel
         if interaction.channel:
             try:
                 await interaction.channel.delete(reason="Screenshare ticket closed.")
             except discord.Forbidden:
-                print(f"Bot lacks permissions to delete screenshare ticket channel.")
+                await _send_error_embed(interaction, "I lack permissions to delete the screenshare ticket channel.")
             except Exception as e:
-                print(f"Error deleting screenshare ticket channel: {e}")
+                await _send_error_embed(interaction, f"An error occurred deleting the screenshare ticket channel: {e}")
+
+    async def on_timeout(self):
+        # Remove Frozen role from user if ticket times out
+        frozen_role = get_role_by_name(self.target_user.guild, FROZEN_ROLE_NAME)
+        if frozen_role and frozen_role in self.target_user.roles:
+            try:
+                await self.target_user.remove_roles(frozen_role, reason="Screenshare ticket timed out.")
+                print(f"Removed Frozen role from {self.target_user.display_name} due to timeout.")
+            except discord.Forbidden:
+                print(f"Bot lacks permissions to remove Frozen role from {self.target_user.display_name}")
+            except Exception as e:
+                print(f"Error removing Frozen role on timeout: {e}")
+
+        # Delete the ticket channel
+        if self.message.channel:
+            try:
+                await self.message.channel.delete(reason="Screenshare ticket timed out.")
+            except discord.Forbidden:
+                print(f"Bot lacks permissions to delete screenshare ticket channel on timeout.")
+            except Exception as e:
+                print(f"Error deleting screenshare ticket channel on timeout: {e}")
+        
+        log_embed = create_embed(
+            title="Screenshare Ticket Timed Out",
+            description=f"Screenshare ticket for {self.target_user.mention} timed out and was automatically closed.",
+            color=discord.Color.red()
+        )
+        await send_log_embed(self.target_user.guild, SCREENSNARE_LOG_CHANNEL_ID, SCREENSNARE_LOG_CHANNEL_NAME, log_embed)
 
 
 class TicketView(discord.ui.View):
     def __init__(self, owner: discord.Member):
         super().__init__(timeout=None)
         self.owner = owner
-        self.message = None # To store the message this view is attached to
 
-    @discord.ui.button(label="Close Ticket", style=discord.ButtonStyle.red, emoji="🔒", custom_id="ticket_close")
+    @discord.ui.button(label="Close Ticket", style=discord.ButtonStyle.red, emoji="🔒")
     async def close_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
         # Only owner or staff can close
         is_staff = any(role in interaction.user.roles for role in [
             get_role_by_name(interaction.guild, MODERATOR_ROLE_NAME),
             get_role_by_name(interaction.guild, ADMIN_STAFF_ROLE_NAME),
-            get_role_by_name(interaction.guild, MANAGER_ROLE_NAME), # Standardized role name
+            get_role_by_name(interaction.guild, MANAGER_ROLE_ROLE_NAME),
             get_role_by_name(interaction.guild, PI_ROLE_NAME),
             get_role_by_name(interaction.guild, STAFF_ROLE_NAME)
         ] if role)
 
         if interaction.user != self.owner and not is_staff:
-            await interaction.response.send_message("You are not authorized to close this ticket.", ephemeral=True)
+            await _send_error_embed(interaction, "You are not authorized to close this ticket.")
             return
 
         channel = interaction.channel
+        ticket_log_channel = await get_channel_by_config(interaction.guild, TICKET_LOG_CHANNEL_ID, TICKET_LOG_CHANNEL_NAME)
         closed_tickets_category = await get_channel_or_create_category(interaction.guild, CLOSED_TICKETS_CATEGORY_ID, "Closed Tickets", is_category=True)
 
         if not closed_tickets_category:
-            await interaction.response.send_message("Could not find/create the 'Closed Tickets' category. Please contact an administrator.", ephemeral=True)
+            await _send_error_embed(interaction, "Could not find/create the 'Closed Tickets' category. Please contact an administrator.")
             return
 
-        await interaction.response.send_message("Closing ticket...")
+        await interaction.response.send_message("Closing ticket and generating transcript...", ephemeral=True)
+
+        # --- Generate HTML Transcript ---
+        messages = [msg async for msg in channel.history(limit=None, oldest_first=True)]
+        
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Ticket Transcript - {html.escape(channel.name)}</title>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <style>
+                body {{ font-family: Arial, sans-serif; background-color: #36393f; color: #dcddde; margin: 20px; }}
+                .container {{ max-width: 900px; margin: auto; padding: 20px; background-color: #2f3136; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.2); }}
+                h1 {{ color: #ffffff; text-align: center; margin-bottom: 25px; }}
+                .message-container {{ background-color: #40444b; padding: 12px 15px; border-radius: 6px; margin-bottom: 12px; border-left: 4px solid #5865f2; display: flex; align-items: flex-start; }}
+                .avatar {{ width: 40px; height: 40px; border-radius: 50%; margin-right: 15px; }}
+                .message-header {{ font-weight: bold; color: #ffffff; font-size: 1.1em; }}
+                .timestamp {{ color: #72767d; font-size: 0.85em; margin-left: 10px; }}
+                .message-content {{ margin-top: 5px; word-wrap: break-word; overflow-wrap: break-word; flex-grow: 1; }}
+                .message-content img {{ max-width: 100%; height: auto; border-radius: 4px; margin-top: 5px; }}
+                .attachment-link {{ color: #5865f2; text-decoration: none; display: block; margin-top: 3px; }}
+                .attachment-link:hover {{ text-decoration: underline; }}
+                .attachments-list {{ list-style-type: none; padding: 0; margin: 0; }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>Ticket Transcript: #{html.escape(channel.name)}</h1>
+        """
+
+        for msg in messages:
+            timestamp = msg.created_at.strftime("%Y-%m-%d %H:%M:%S UTC")
+            author_name = html.escape(str(msg.author.display_name))
+            author_avatar_url = str(msg.author.display_avatar.url)
+            message_content = html.escape(msg.content) if msg.content else ""
+            
+            html_content += f"""
+                <div class="message-container">
+                    <img class="avatar" src="{author_avatar_url}" alt="Avatar">
+                    <div>
+                        <span class="message-header">{author_name}</span>
+                        <span class="timestamp">({timestamp})</span>
+                        <div class="message-content">{message_content}</div>
+            """
+            
+            if msg.attachments:
+                html_content += '<ul class="attachments-list">'
+                for attachment in msg.attachments:
+                    html_content += f'<li><a class="attachment-link" href="{attachment.url}" target="_blank">📄 {html.escape(attachment.filename)}</a></li>'
+                html_content += '</ul>'
+
+            html_content += """
+                    </div>
+                </div>
+            """
+
+        html_content += """
+            </div>
+        </body>
+        </html>
+        """
+
+        # Prepare the HTML file to send
+        transcript_file = io.BytesIO(html_content.encode('utf-8'))
+        transcript_filename = f"ticket_transcript_{channel.name}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
+        discord_file = discord.File(transcript_file, filename=transcript_filename)
+
+        if ticket_log_channel:
+            try:
+                await ticket_log_channel.send(f"Transcript for closed ticket {channel.mention}:", file=discord_file)
+            except discord.Forbidden:
+                print(f"Bot lacks permissions to send files in {ticket_log_channel.name}.")
+            except Exception as e:
+                print(f"Error sending HTML transcript to log channel: {e}")
+        else:
+            print(f"Warning: Ticket log channel '{TICKET_LOG_CHANNEL_NAME}' (ID: {TICKET_LOG_CHANNEL_ID}) not found or is not a text channel.")
+        # --- End HTML Transcript Generation ---
 
         # Change permissions to private
-        await channel.set_permissions(interaction.guild.default_role, read_messages=False)
-        await channel.set_permissions(self.owner, read_messages=True, send_messages=False) # Owner can read but not send
-        
+        try:
+            await channel.set_permissions(interaction.guild.default_role, read_messages=False)
+            await channel.set_permissions(self.owner, read_messages=True, send_messages=False) # Owner can read but not send
+            
+            # Remove all other staff roles and add claiming staff with view only access.
+            staff_roles_to_reset = [get_role_by_name(interaction.guild, MODERATOR_ROLE_NAME),
+                                    get_role_by_name(interaction.guild, ADMIN_STAFF_ROLE_NAME),
+                                    get_role_by_name(interaction.guild, MANAGER_ROLE_ROLE_NAME),
+                                    get_role_by_name(interaction.guild, PI_ROLE_NAME),
+                                    get_role_by_name(interaction.guild, STAFF_ROLE_NAME)]
+            for role in staff_roles_to_reset:
+                if role:
+                    await channel.set_permissions(role, overwrite=None) # Reset to category default or no permissions
+
+            await channel.set_permissions(interaction.user, read_messages=True, send_messages=False) # Closer can also read
+
+        except discord.Forbidden:
+            await _send_error_embed(interaction, "I don't have permissions to modify channel permissions.")
+            return
+        except Exception as e:
+            await _send_error_embed(interaction, f"An error occurred modifying channel permissions: {e}")
+            return
+
         # Move to closed category
-        await channel.edit(category=closed_tickets_category, name=f"closed-{channel.name}")
+        try:
+            await channel.edit(category=closed_tickets_category, name=f"closed-{channel.name}")
+        except discord.Forbidden:
+            await _send_error_embed(interaction, "I don't have permissions to move the channel to the closed category.")
+            return
+        except Exception as e:
+            await _send_error_embed(interaction, f"An error occurred moving the channel: {e}")
+            return
+
 
         embed = create_embed(
             title="Ticket Closed",
@@ -1439,29 +1434,60 @@ class TicketView(discord.ui.View):
         )
         await channel.send(embed=embed)
 
-        log_content = {
-            "Ticket Owner": f"<@{self.owner.id}> ({self.owner.id})",
-            "Closed By": f"<@{interaction.user.id}> ({interaction.user.id})",
-            "Channel Name": channel.name,
-            "Channel ID": channel.id
-        }
-        await send_log_html(interaction.guild, TICKET_LOG_CHANNEL_ID, TICKET_LOG_CHANNEL_NAME, "Ticket Closed", log_content)
+        log_embed = create_embed(
+            title="Ticket Closed (Log)",
+            description=f"Ticket {channel.name} owned by {self.owner.mention} was closed by {interaction.user.mention}.",
+            color=discord.Color.red(),
+            fields=[
+                {"name": "Ticket Owner", "value": f"<@{self.owner.id}> ({self.owner.id})", "inline": True},
+                {"name": "Closed By", "value": f"<@{interaction.user.id}> ({interaction.user.id})", "inline": True},
+                {"name": "Channel", "value": channel.mention, "inline": True}
+            ]
+        )
+        if ticket_log_channel:
+            await ticket_log_channel.send(embed=log_embed)
 
-
-    @discord.ui.button(label="Claim Ticket", style=discord.ButtonStyle.blurple, emoji="🙋", custom_id="ticket_claim")
+    @discord.ui.button(label="Claim Ticket", style=discord.ButtonStyle.blurple, emoji="�")
     async def claim_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
         staff_role = get_role_by_name(interaction.guild, STAFF_ROLE_NAME)
         if not staff_role or staff_role not in interaction.user.roles:
-            await interaction.response.send_message("You must be a Staff member to claim this ticket.", ephemeral=True)
+            await _send_error_embed(interaction, "You must be a Staff member to claim this ticket.")
             return
 
-        # Explicitly set permissions for the claiming staff member
-        await interaction.channel.set_permissions(interaction.user, read_messages=True, send_messages=True, manage_channels=True)
-        # Remove default read for general staff roles to make it clear who claimed
-        for role_name in [MODERATOR_ROLE_NAME, ADMIN_STAFF_ROLE_NAME, MANAGER_ROLE_NAME, PI_ROLE_NAME, STAFF_ROLE_NAME, SCREENSHARING_TEAM_ROLE_NAME]: # Standardized role name
-            role = get_role_by_name(interaction.guild, role_name)
-            if role and role != staff_role: # Don't remove the staff role itself if it's the claiming role
-                await interaction.channel.set_permissions(role, read_messages=False, send_messages=False)
+        # Reset permissions for all relevant staff roles first
+        staff_roles_to_reset = [get_role_by_name(interaction.guild, MODERATOR_ROLE_NAME),
+                                get_role_by_name(interaction.guild, ADMIN_STAFF_ROLE_NAME),
+                                get_role_by_name(interaction.guild, MANAGER_ROLE_ROLE_NAME),
+                                get_role_by_name(interaction.guild, PI_ROLE_NAME),
+                                get_role_by_name(interaction.guild, STAFF_ROLE_NAME)]
+        try:
+            for role in staff_roles_to_reset:
+                if role:
+                    # Clear existing explicit permissions for staff roles, allowing category defaults to apply
+                    # or preparing for specific overwrites.
+                    await interaction.channel.set_permissions(role, overwrite=None)
+        except discord.Forbidden:
+            await _send_error_embed(interaction, "I don't have permissions to reset staff role permissions on this channel.")
+            return
+        except Exception as e:
+            await _send_error_embed(interaction, f"An error occurred during staff permission reset: {e}")
+            return
+
+
+        try:
+            # Grant explicit permissions to the claiming staff member
+            await interaction.channel.set_permissions(interaction.user, read_messages=True, send_messages=True, manage_channels=True)
+            # Ensure the owner can still read and send
+            await interaction.channel.set_permissions(self.owner, read_messages=True, send_messages=True)
+            # Ensure @everyone cannot read messages anymore
+            await interaction.channel.set_permissions(interaction.guild.default_role, read_messages=False)
+        except discord.Forbidden:
+            await _send_error_embed(interaction, "I don't have permissions to set specific permissions on this channel.")
+            return
+        except Exception as e:
+            await _send_error_embed(interaction, f"An error occurred setting permissions for claiming: {e}")
+            return
+
 
         await interaction.response.send_message(f"You have claimed this ticket. {self.owner.mention} can now see and reply.", ephemeral=True)
 
@@ -1471,14 +1497,6 @@ class TicketView(discord.ui.View):
             color=discord.Color.blue()
         )
         await interaction.channel.send(embed=embed)
-        
-        log_content = {
-            "Ticket Owner": f"<@{self.owner.id}> ({self.owner.id})",
-            "Claimed By": f"<@{interaction.user.id}> ({interaction.user.id})",
-            "Channel Name": interaction.channel.name,
-            "Channel ID": interaction.channel.id
-        }
-        await send_log_html(interaction.guild, TICKET_LOG_CHANNEL_ID, TICKET_LOG_CHANNEL_NAME, "Ticket Claimed", log_content)
 
 
 # Placeholder for PPPVotingView (no changes requested, keeping for context)
@@ -1503,13 +1521,13 @@ class PPPVotingView(discord.ui.View):
     @discord.ui.button(label="Yes", style=discord.ButtonStyle.green)
     async def yes_vote(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.user.id in self.votes_yes or interaction.user.id in self.votes_no:
-            await interaction.response.send_message("You have already voted.", ephemeral=True)
+            await _send_error_embed(interaction, "You have already voted.")
             return
 
         # Check if user has PPP Manager role
         ppp_manager_role = get_role_by_name(interaction.guild, PPP_MANAGER_ROLE_NAME)
         if not ppp_manager_role or ppp_manager_role not in interaction.user.roles:
-            await interaction.response.send_message("You need the P.P.P. Manager role to vote on this poll.", ephemeral=True)
+            await _send_error_embed(interaction, "You need the P.P.P. Manager role to vote on this poll.")
             return
 
         self.votes_yes.add(interaction.user.id)
@@ -1519,13 +1537,13 @@ class PPPVotingView(discord.ui.View):
     @discord.ui.button(label="No", style=discord.ButtonStyle.red)
     async def no_vote(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.user.id in self.votes_yes or interaction.user.id in self.votes_no:
-            await interaction.response.send_message("You have already voted.", ephemeral=True)
+            await _send_error_embed(interaction, "You have already voted.")
             return
         
         # Check if user has PPP Manager role
         ppp_manager_role = get_role_by_name(interaction.guild, PPP_MANAGER_ROLE_NAME)
         if not ppp_manager_role or ppp_manager_role not in interaction.user.roles:
-            await interaction.response.send_message("You need the P.P.P. Manager role to vote on this poll.", ephemeral=True)
+            await _send_error_embed(interaction, "You need the P.P.P. Manager role to vote on this poll.")
             return
 
         self.votes_no.add(interaction.user.id)
@@ -1536,11 +1554,11 @@ class PPPVotingView(discord.ui.View):
 
 # ELO related commands
 @bot.command(name="wins")
-@commands.has_any_role(ADMIN_STAFF_ROLE_NAME, MANAGER_ROLE_NAME, PI_ROLE_NAME)
+@commands.has_any_role(ADMIN_STAFF_ROLE_NAME, MANAGER_ROLE_ROLE_NAME, PI_ROLE_NAME)
 async def add_win(ctx: commands.Context, member: discord.Member, mvp: Optional[bool] = False):
     await ctx.message.add_reaction("⌛") # Add reaction
     if db_pool is None:
-        await ctx.send("Database not connected.")
+        await _send_error_embed(ctx, "Database not connected.")
         return
 
     async with db_pool.acquire() as conn:
@@ -1555,7 +1573,7 @@ async def add_win(ctx: commands.Context, member: discord.Member, mvp: Optional[b
                 await cursor.execute("SELECT wins, losses, elo FROM users WHERE discord_id = %s", (member.id,))
                 result = await cursor.fetchone()
                 if not result: # Should not happen with INSERT IGNORE, but as a safeguard
-                    await ctx.send(f"{member.display_name} is not registered in the database, cannot add win.")
+                    await _send_error_embed(ctx, f"{member.display_name} is not registered in the database, cannot add win.")
                     return
 
                 current_wins, current_losses, current_elo = result
@@ -1575,16 +1593,21 @@ async def add_win(ctx: commands.Context, member: discord.Member, mvp: Optional[b
                 await update_streak(member.id, True) # Update streak
                 await update_elo_role(member.id, new_elo) # Update ELO role and nickname
 
-                await ctx.send(f"Added a win for {member.mention}. New ELO: {new_elo} (change: +{elo_change}). Wins: {new_wins}")
+                confirmation_embed = create_embed(
+                    title="Win Added",
+                    description=f"Added a win for {member.mention}. New ELO: {new_elo} (change: +{elo_change}). Wins: {new_wins}",
+                    color=discord.Color.green()
+                )
+                await ctx.send(embed=confirmation_embed)
             except aiomysql.Error as e:
-                await ctx.send(f"An error occurred: {e}")
+                await _send_error_embed(ctx, f"An error occurred while adding win: {e}")
 
 @bot.command(name="loss")
-@commands.has_any_role(ADMIN_STAFF_ROLE_NAME, MANAGER_ROLE_NAME, PI_ROLE_NAME)
+@commands.has_any_role(ADMIN_STAFF_ROLE_NAME, MANAGER_ROLE_ROLE_NAME, PI_ROLE_NAME)
 async def add_loss(ctx: commands.Context, member: discord.Member):
     await ctx.message.add_reaction("⌛") # Add reaction
     if db_pool is None:
-        await ctx.send("Database not connected.")
+        await _send_error_embed(ctx, "Database not connected.")
         return
 
     async with db_pool.acquire() as conn:
@@ -1599,7 +1622,7 @@ async def add_loss(ctx: commands.Context, member: discord.Member):
                 await cursor.execute("SELECT wins, losses, elo FROM users WHERE discord_id = %s", (member.id,))
                 result = await cursor.fetchone()
                 if not result: # Should not happen with INSERT IGNORE, but as a safeguard
-                    await ctx.send(f"{member.display_name} is not registered in the database, cannot add loss.")
+                    await _send_error_embed(ctx, f"{member.display_name} is not registered in the database, cannot add loss.")
                     return
 
                 current_wins, current_losses, current_elo = result
@@ -1617,16 +1640,21 @@ async def add_loss(ctx: commands.Context, member: discord.Member):
                 await update_streak(member.id, False) # Update streak (reset on loss)
                 await update_elo_role(member.id, new_elo) # Update ELO role and nickname
 
-                await ctx.send(f"Added a loss for {member.mention}. New ELO: {new_elo} (change: {elo_change}). Losses: {new_losses}")
+                confirmation_embed = create_embed(
+                    title="Loss Added",
+                    description=f"Added a loss for {member.mention}. New ELO: {new_elo} (change: {elo_change}). Losses: {new_losses}",
+                    color=discord.Color.red()
+                )
+                await ctx.send(embed=confirmation_embed)
             except aiomysql.Error as e:
-                await ctx.send(f"An error occurred: {e}")
+                await _send_error_embed(ctx, f"An error occurred while adding loss: {e}")
 
 @bot.command(name="elochange")
-@commands.has_any_role(ADMIN_STAFF_ROLE_NAME, MANAGER_ROLE_NAME, PI_ROLE_NAME)
+@commands.has_any_role(ADMIN_STAFF_ROLE_NAME, MANAGER_ROLE_ROLE_NAME, PI_ROLE_NAME)
 async def elo_change(ctx: commands.Context, member: discord.Member, value: int):
     await ctx.message.add_reaction("⌛")
     if db_pool is None:
-        await ctx.send("Database not connected.")
+        await _send_error_embed(ctx, "Database not connected.")
         return
     
     async with db_pool.acquire() as conn:
@@ -1648,16 +1676,21 @@ async def elo_change(ctx: commands.Context, member: discord.Member, value: int):
                 await conn.commit()
 
                 await update_elo_role(member.id, new_elo)
-                await ctx.send(f"ELO for {member.mention} changed by {value}. New ELO: {new_elo}.")
+                confirmation_embed = create_embed(
+                    title="ELO Changed",
+                    description=f"ELO for {member.mention} changed by {value}. New ELO: {new_elo}.",
+                    color=discord.Color.blue()
+                )
+                await ctx.send(embed=confirmation_embed)
             except aiomysql.Error as e:
-                await ctx.send(f"An error occurred: {e}")
+                await _send_error_embed(ctx, f"An error occurred while changing ELO: {e}")
 
-@bot.command(name="setelo", aliases=["elo"]) # Added 'elo' as an alias
-@commands.has_any_role(ADMIN_STAFF_ROLE_NAME, MANAGER_ROLE_NAME, PI_ROLE_NAME)
+@bot.command(name="setelo")
+@commands.has_any_role(ADMIN_STAFF_ROLE_NAME, MANAGER_ROLE_ROLE_NAME, PI_ROLE_NAME)
 async def set_elo(ctx: commands.Context, member: discord.Member, value: int):
     await ctx.message.add_reaction("⌛")
     if db_pool is None:
-        await ctx.send("Database not connected.")
+        await _send_error_embed(ctx, "Database not connected.")
         return
     
     async with db_pool.acquire() as conn:
@@ -1676,16 +1709,21 @@ async def set_elo(ctx: commands.Context, member: discord.Member, value: int):
                 await conn.commit()
 
                 await update_elo_role(member.id, value)
-                await ctx.send(f"ELO for {member.mention} set to {value}.")
+                confirmation_embed = create_embed(
+                    title="ELO Set",
+                    description=f"ELO for {member.mention} set to {value}.",
+                    color=discord.Color.blue()
+                )
+                await ctx.send(embed=confirmation_embed)
             except aiomysql.Error as e:
-                await ctx.send(f"An error occurred: {e}")
+                await _send_error_embed(ctx, f"An error occurred while setting ELO: {e}")
 
 @bot.command(name="info", aliases=["i"])
 async def player_info(ctx: commands.Context, member: Optional[discord.Member] = None):
     await ctx.message.add_reaction("⌛") # Add reaction
     member = member or ctx.author
     if db_pool is None:
-        await ctx.send("Database not connected.")
+        await _send_error_embed(ctx, "Database not connected.")
         return
 
     async with db_pool.acquire() as conn:
@@ -1697,7 +1735,12 @@ async def player_info(ctx: commands.Context, member: Optional[discord.Member] = 
                 )
                 result = await cursor.fetchone()
                 if not result:
-                    await ctx.send(f"{member.display_name} is not registered. Please register first, or use `=forceregister` if you are staff.")
+                    error_embed = create_embed(
+                        title="User Not Registered",
+                        description=f"{member.display_name} is not registered. Please register first, or use `=forceregister` if you are staff.",
+                        color=discord.Color.orange()
+                    )
+                    await ctx.send(embed=error_embed)
                     return
 
                 ign, elo, wins, losses, mvps, streak = result
@@ -1710,18 +1753,18 @@ async def player_info(ctx: commands.Context, member: Optional[discord.Member] = 
                 await ctx.send(file=file)
 
             except aiomysql.Error as e:
-                await ctx.send(f"An error occurred while fetching player info: {e}")
+                await _send_error_embed(ctx, f"An error occurred while fetching player info: {e}")
             except Exception as e:
-                await ctx.send(f"An unexpected error occurred: {e}")
+                await _send_error_embed(ctx, f"An unexpected error occurred: {e}")
 
 
 # Strike, Ban, Mute commands - Ensure embeds are sent to logs AND chat response
 @bot.command(name="strike")
-@commands.has_any_role(MODERATOR_ROLE_NAME, ADMIN_STAFF_ROLE_NAME, MANAGER_ROLE_NAME, PI_ROLE_NAME)
+@commands.has_any_role(MODERATOR_ROLE_NAME, ADMIN_STAFF_ROLE_NAME, MANAGER_ROLE_ROLE_NAME, PI_ROLE_NAME)
 async def strike(ctx: commands.Context, member: discord.Member, *, reason: str):
     await ctx.message.add_reaction("⌛") # Add reaction
     if db_pool is None:
-        await ctx.send("Database not connected.")
+        await _send_error_embed(ctx, "Database not connected.")
         return
     
     async with db_pool.acquire() as conn:
@@ -1745,20 +1788,6 @@ async def strike(ctx: commands.Context, member: discord.Member, *, reason: str):
                 strike_id = cursor.lastrowid # Get the ID of the inserted strike
                 await conn.commit()
                 
-                # Create the detailed embed
-                detailed_embed = create_embed(
-                    title="User Stripped of Dignity (Strike)",
-                    description=f"<@{member.id}> has received a strike.",
-                    color=discord.Color.red(),
-                    fields=[
-                        {"name": "User", "value": f"<@{member.id}> ({member.id})", "inline": True},
-                        {"name": "Reason", "value": reason, "inline": True},
-                        {"name": "Issued By", "value": f"<@{ctx.author.id}>", "inline": True},
-                        {"name": "Strike ID", "value": str(strike_id), "inline": True},
-                        {"name": "ELO Change", "value": "-40", "inline": True}
-                    ]
-                )
-                
                 # Send embed to user
                 user_embed = create_embed(
                     title="You have been Stripped of your Dignity (Strike)",
@@ -1768,24 +1797,40 @@ async def strike(ctx: commands.Context, member: discord.Member, *, reason: str):
                 try:
                     await member.send(embed=user_embed)
                 except discord.Forbidden:
-                    print(f"Could not DM {member.display_name} about the strike.")
+                    await _send_error_embed(ctx, f"Could not DM {member.display_name} about the strike.")
 
-                # Send detailed embed to log channel
-                await send_log_embed(ctx.guild, STRIKE_LOG_CHANNEL_ID, STRIKE_LOG_CHANNEL_NAME, detailed_embed)
+                # Send embed to log channel
+                log_embed = create_embed(
+                    title="Strike Issued (Log)",
+                    description=f"<@{member.id}> has received a strike.",
+                    color=discord.Color.red(),
+                    fields=[
+                        {"name": "User", "value": f"<@{member.id}> ({member.id})", "inline": True},
+                        {"name": "Reason", "value": reason, "inline": True},
+                        {"name": "Issued By", "value": f"<@{ctx.author.id}>", "inline": True},
+                        {"name": "Strike ID", "value": str(strike_id), "inline": True}
+                    ]
+                )
+                await send_log_embed(ctx.guild, STRIKE_LOG_CHANNEL_ID, STRIKE_LOG_CHANNEL_NAME, log_embed)
                 
-                # Send detailed embed to current channel
-                await ctx.send(embed=detailed_embed)
+                # Send confirmation embed to current channel
+                confirmation_embed = create_embed(
+                    title="Strike Issued",
+                    description=f"Successfully issued a strike to {member.mention} (Strike ID: `{strike_id}`).\nDetails logged in <#{STRIKE_LOG_CHANNEL_ID}>.",
+                    color=discord.Color.red()
+                )
+                await ctx.send(embed=confirmation_embed)
 
             except aiomysql.Error as e:
-                await ctx.send(f"An error occurred: {e}. Ensure the user exists in the database.")
+                await _send_error_embed(ctx, f"An error occurred: {e}. Ensure the user exists in the database.")
 
 
 @bot.command(name="strikeremove", aliases=["srem"])
-@commands.has_any_role(ADMIN_STAFF_ROLE_NAME, MANAGER_ROLE_NAME, PI_ROLE_NAME)
+@commands.has_any_role(ADMIN_STAFF_ROLE_NAME, MANAGER_ROLE_ROLE_NAME, PI_ROLE_NAME)
 async def remove_strike(ctx: commands.Context, strike_id: int, *, reason: str = "No reason provided."):
     await ctx.message.add_reaction("⌛")
     if db_pool is None:
-        await ctx.send("Database not connected.")
+        await _send_error_embed(ctx, "Database not connected.")
         return
     
     async with db_pool.acquire() as conn:
@@ -1799,7 +1844,7 @@ async def remove_strike(ctx: commands.Context, strike_id: int, *, reason: str = 
                 strike_info = await cursor.fetchone()
 
                 if not strike_info:
-                    await ctx.send(f"Strike with ID `{strike_id}` not found.")
+                    await _send_error_embed(ctx, f"Strike with ID `{strike_id}` not found.")
                     return
                 
                 target_discord_id, strike_reason = strike_info
@@ -1811,24 +1856,12 @@ async def remove_strike(ctx: commands.Context, strike_id: int, *, reason: str = 
                 )
                 await conn.commit()
 
+                # Potentially revert ELO if needed, or if strikes have a direct ELO impact on removal
+                # For now, only removing the strike entry
+                # If a strike is -40 ELO, removing it should +40 ELO.
                 await update_player_elo_in_db(target_discord_id, 40) # Add 40 ELO back
                 current_elo = await get_player_elo(target_discord_id)
                 await update_elo_role(target_discord_id, current_elo) # Update ELO role and nickname
-
-                # Create the detailed embed
-                detailed_embed = create_embed(
-                    title="Strike Removed",
-                    description=f"Strike ID `{strike_id}` for <@{target_discord_id}> has been removed.",
-                    color=discord.Color.green(),
-                    fields=[
-                        {"name": "Strike ID", "value": str(strike_id), "inline": True},
-                        {"name": "User", "value": f"<@{target_discord_id}> ({target_discord_id})", "inline": True},
-                        {"name": "Original Reason", "value": strike_reason, "inline": False},
-                        {"name": "Removal Reason", "value": reason, "inline": False},
-                        {"name": "Removed By", "value": f"<@{ctx.author.id}>", "inline": True},
-                        {"name": "ELO Change", "value": "+40", "inline": True}
-                    ]
-                )
 
                 user_embed = create_embed(
                     title="Strike Removed",
@@ -1841,21 +1874,37 @@ async def remove_strike(ctx: commands.Context, strike_id: int, *, reason: str = 
                     except discord.Forbidden:
                         print(f"Could not DM {target_member.display_name} about strike removal.")
 
-                # Send detailed embed to log channel
-                await send_log_embed(ctx.guild, STRIKE_LOG_CHANNEL_ID, STRIKE_LOG_CHANNEL_NAME, detailed_embed)
+                log_embed = create_embed(
+                    title="Strike Removed (Log)",
+                    description=f"Strike ID `{strike_id}` for <@{target_discord_id}> has been removed.",
+                    color=discord.Color.green(),
+                    fields=[
+                        {"name": "Strike ID", "value": str(strike_id), "inline": True},
+                        {"name": "User", "value": f"<@{target_discord_id}> ({target_discord_id})", "inline": True},
+                        {"name": "Original Reason", "value": strike_reason, "inline": False},
+                        {"name": "Removal Reason", "value": reason, "inline": False},
+                        {"name": "Removed By", "value": f"<@{ctx.author.id}>", "inline": True}
+                    ]
+                )
+                await send_log_embed(ctx.guild, STRIKE_LOG_CHANNEL_ID, STRIKE_LOG_CHANNEL_NAME, log_embed)
                 
-                # Send detailed embed to current channel
-                await ctx.send(embed=detailed_embed)
+                # Send confirmation embed to current channel
+                confirmation_embed = create_embed(
+                    title="Strike Removed",
+                    description=f"Successfully removed strike ID `{strike_id}` for <@{target_discord_id}>.\nDetails logged in <#{STRIKE_LOG_CHANNEL_ID}>.",
+                    color=discord.Color.green()
+                )
+                await ctx.send(embed=confirmation_embed)
 
             except aiomysql.Error as e:
-                await ctx.send(f"An error occurred: {e}")
+                await _send_error_embed(ctx, f"An error occurred: {e}")
 
 @bot.command(name="ban")
-@commands.has_any_role(ADMIN_STAFF_ROLE_NAME, MANAGER_ROLE_NAME, PI_ROLE_NAME) # Only Admin+ can ban
+@commands.has_any_role(ADMIN_STAFF_ROLE_NAME, MANAGER_ROLE_ROLE_NAME, PI_ROLE_NAME) # Only Admin+ can ban
 async def ban_user(ctx: commands.Context, member: discord.Member, duration: str, *, reason: str = "No reason provided."):
     await ctx.message.add_reaction("⌛") # Add reaction
     if db_pool is None:
-        await ctx.send("Database not connected.")
+        await _send_error_embed(ctx, "Database not connected.")
         return
 
     expires_at = None
@@ -1881,11 +1930,11 @@ async def ban_user(ctx: commands.Context, member: discord.Member, duration: str,
             expires_at = datetime.datetime.now() + datetime.timedelta(days=amount*365) # Approximation for years
             duration_text = f"for {amount} year(s)"
         else:
-            await ctx.send("Invalid duration format. Use 1s, 1m, 1h, 1d, 1y.", ephemeral=True)
+            await _send_error_embed(ctx, "Invalid duration format. Use 1s, 1m, 1h, 1d, 1y.")
             return
     except ValueError:
         if duration.lower() != "permanent":
-            await ctx.send("Invalid duration format. Use 1s, 1m, 1h, 1d, 1y, or 'permanent'.", ephemeral=True)
+            await _send_error_embed(ctx, "Invalid duration format. Use 1s, 1m, 1h, 1d, 1y, or 'permanent'.")
             return
         # If 'permanent', expires_at remains None
 
@@ -1899,7 +1948,7 @@ async def ban_user(ctx: commands.Context, member: discord.Member, duration: str,
                 )
 
                 await cursor.execute(
-                    "INSERT INTO bans (discord_id, reason, issued_by, expires_at) VALUES (%s, %s, %s, %s)",
+                    "INSERT INTO bans (discord_id, reason, issued_by, expires_at, active) VALUES (%s, %s, %s, %s, TRUE)",
                     (member.id, reason, ctx.author.id, expires_at)
                 )
                 await conn.commit()
@@ -1908,30 +1957,14 @@ async def ban_user(ctx: commands.Context, member: discord.Member, duration: str,
 
                 banned_role = get_role_by_name(ctx.guild, BANNED_ROLE_NAME)
                 if not banned_role:
-                    await ctx.send("Banned role not found. Please configure it.")
+                    await _send_error_embed(ctx, "Banned role not found. Please configure it.")
                     return
 
                 try:
                     await member.add_roles(banned_role, reason=reason)
                 except discord.Forbidden:
-                    await ctx.send("I don't have permissions to assign the 'Banned' role.")
+                    await _send_error_embed(ctx, "I don't have permissions to assign the 'Banned' role. Ensure my role is above the 'Banned' role.")
                     return
-
-                # Create the detailed embed
-                detailed_embed = create_embed(
-                    title="User Banned",
-                    description=f"<@{member.id}> has been banned {duration_text}.",
-                    color=discord.Color.red(),
-                    fields=[
-                        {"name": "User", "value": f"<@{member.id}> ({member.id})", "inline": True},
-                        {"name": "Reason", "value": reason, "inline": True},
-                        {"name": "Banned By", "value": f"<@{ctx.author.id}>", "inline": True},
-                        {"name": "Duration", "value": duration_text, "inline": True},
-                        {"name": "Ban ID", "value": str(ban_id), "inline": True}
-                    ]
-                )
-                if expires_at:
-                    detailed_embed.add_field(name="Expires At", value=expires_at.strftime("%Y-%m-%d %H:%M:%S UTC"), inline=False)
 
                 # Send embed to user
                 user_embed = create_embed(
@@ -1946,55 +1979,75 @@ async def ban_user(ctx: commands.Context, member: discord.Member, duration: str,
                 except discord.Forbidden:
                     print(f"Could not DM {member.display_name} about the ban.")
 
-                # Send detailed embed to log channel
-                await send_log_embed(ctx.guild, BAN_LOG_CHANNEL_ID, BAN_LOG_CHANNEL_NAME, detailed_embed)
+                # Send embed to log channel
+                log_embed = create_embed(
+                    title="User Banned (Log)",
+                    description=f"<@{member.id}> has been banned.",
+                    color=discord.Color.red(),
+                    fields=[
+                        {"name": "User", "value": f"<@{member.id}> ({member.id})", "inline": True},
+                        {"name": "Reason", "value": reason, "inline": True},
+                        {"name": "Banned By", "value": f"<@{ctx.author.id}>", "inline": True},
+                        {"name": "Duration", "value": duration_text, "inline": True},
+                        {"name": "Ban ID", "value": str(ban_id), "inline": True}
+                    ]
+                )
+                if expires_at:
+                    log_embed.add_field(name="Expires At", value=expires_at.strftime("%Y-%m-%d %H:%M:%S UTC"), inline=False)
+                await send_log_embed(ctx.guild, BAN_LOG_CHANNEL_ID, BAN_LOG_CHANNEL_NAME, log_embed)
                 
-                # Send detailed embed to current channel
-                await ctx.send(embed=detailed_embed)
+                # Send confirmation embed to current channel
+                confirmation_embed = create_embed(
+                    title="User Banned",
+                    description=f"Successfully banned {member.mention} {duration_text} (Ban ID: `{ban_id}`).\nDetails logged in <#{BAN_LOG_CHANNEL_ID}>.",
+                    color=discord.Color.red()
+                )
+                await ctx.send(embed=confirmation_embed)
 
             except aiomysql.Error as e:
-                await ctx.send(f"An error occurred while banning: {e}. Ensure the user exists in the database.")
+                await _send_error_embed(ctx, f"An error occurred while banning: {e}. Ensure the user exists in the database.")
 
 @bot.command(name="unban")
-@commands.has_any_role(ADMIN_STAFF_ROLE_NAME, MANAGER_ROLE_NAME, PI_ROLE_NAME)
+@commands.has_any_role(ADMIN_STAFF_ROLE_NAME, MANAGER_ROLE_ROLE_NAME, PI_ROLE_NAME)
 async def unban_user(ctx: commands.Context, member: discord.Member, *, reason: str = "No reason provided."):
     await ctx.message.add_reaction("⌛")
     if db_pool is None:
-        await ctx.send("Database not connected.")
+        await _send_error_embed(ctx, "Database not connected.")
         return
     
     banned_role = get_role_by_name(ctx.guild, BANNED_ROLE_NAME)
     if not banned_role:
-        await ctx.send("Banned role not found. Please configure it.")
+        await _send_error_embed(ctx, "Banned role not found. Please configure it.")
         return
 
     async with db_pool.acquire() as conn:
         async with conn.cursor() as cursor:
             try:
+                # Update all active bans for this user to inactive, and record removal details
                 await cursor.execute(
                     "UPDATE bans SET active = FALSE, removed_by = %s, removed_reason = %s, removed_at = NOW() WHERE discord_id = %s AND active = TRUE",
                     (ctx.author.id, reason, member.id)
                 )
+                rows_affected = cursor.rowcount
                 await conn.commit()
+
+                if rows_affected == 0:
+                    await _send_error_embed(ctx, f"{member.display_name} does not have an active ban record in the database.")
+                    # Still attempt to remove role in case DB is out of sync
+                    if banned_role in member.roles:
+                        try:
+                            await member.remove_roles(banned_role, reason=f"Manually unbanned by {ctx.author.name}: {reason} (No active DB record)")
+                            await ctx.send(f"Removed 'Banned' role from {member.mention}, but no active ban record found in DB.")
+                        except discord.Forbidden:
+                            await _send_error_embed(ctx, f"I don't have permissions to remove the 'Banned' role from {member.display_name}.")
+                    return
 
                 if banned_role in member.roles:
                     try:
                         await member.remove_roles(banned_role, reason=f"Unbanned by {ctx.author.name}: {reason}")
                     except discord.Forbidden:
-                        await ctx.send(f"I don't have permissions to remove the 'Banned' role from {member.display_name}.")
+                        await _send_error_embed(ctx, f"I don't have permissions to remove the 'Banned' role from {member.display_name}. Ensure my role is above the 'Banned' role.")
                         return
-
-                # Create the detailed embed
-                detailed_embed = create_embed(
-                    title="User Unbanned",
-                    description=f"<@{member.id}> has been unbanned.",
-                    color=discord.Color.green(),
-                    fields=[
-                        {"name": "User", "value": f"<@{member.id}> ({member.id})", "inline": True},
-                        {"name": "Reason", "value": reason, "inline": True},
-                        {"name": "Unbanned By", "value": f"<@{ctx.author.id}>", "inline": True}
-                    ]
-                )
 
                 user_embed = create_embed(
                     title="You have been Unbanned!",
@@ -2006,21 +2059,35 @@ async def unban_user(ctx: commands.Context, member: discord.Member, *, reason: s
                 except discord.Forbidden:
                     print(f"Could not DM {member.display_name} about the unban.")
 
-                # Send detailed embed to log channel
-                await send_log_embed(ctx.guild, BAN_LOG_CHANNEL_ID, BAN_LOG_CHANNEL_NAME, detailed_embed)
+                log_embed = create_embed(
+                    title="User Unbanned (Log)",
+                    description=f"<@{member.id}> has been unbanned.",
+                    color=discord.Color.green(),
+                    fields=[
+                        {"name": "User", "value": f"<@{member.id}> ({member.id})", "inline": True},
+                        {"name": "Reason", "value": reason, "inline": True},
+                        {"name": "Unbanned By", "value": f"<@{ctx.author.id}>", "inline": True}
+                    ]
+                )
+                await send_log_embed(ctx.guild, BAN_LOG_CHANNEL_ID, BAN_LOG_CHANNEL_NAME, log_embed)
                 
-                # Send detailed embed to current channel
-                await ctx.send(embed=detailed_embed)
+                # Send confirmation embed to current channel
+                confirmation_embed = create_embed(
+                    title="User Unbanned",
+                    description=f"Successfully unbanned {member.mention}.\nDetails logged in <#{BAN_LOG_CHANNEL_ID}>.",
+                    color=discord.Color.green()
+                )
+                await ctx.send(embed=confirmation_embed)
 
             except aiomysql.Error as e:
-                await ctx.send(f"An error occurred while unbanning: {e}")
+                await _send_error_embed(ctx, f"An error occurred while unbanning: {e}")
 
 @bot.command(name="mute")
-@commands.has_any_role(MODERATOR_ROLE_NAME, ADMIN_STAFF_ROLE_NAME, MANAGER_ROLE_NAME, PI_ROLE_NAME)
+@commands.has_any_role(MODERATOR_ROLE_NAME, ADMIN_STAFF_ROLE_NAME, MANAGER_ROLE_ROLE_NAME, PI_ROLE_NAME)
 async def mute_user(ctx: commands.Context, member: discord.Member, duration: str, *, reason: str = "No reason provided."):
     await ctx.message.add_reaction("⌛") # Add reaction
     if db_pool is None:
-        await ctx.send("Database not connected.")
+        await _send_error_embed(ctx, "Database not connected.")
         return
 
     expires_at = None
@@ -2046,11 +2113,11 @@ async def mute_user(ctx: commands.Context, member: discord.Member, duration: str
             expires_at = datetime.datetime.now() + datetime.timedelta(days=amount*365) # Approximation for years
             duration_text = f"for {amount} year(s)"
         else:
-            await ctx.send("Invalid duration format. Use 1s, 1m, 1h, 1d, 1y.", ephemeral=True)
+            await _send_error_embed(ctx, "Invalid duration format. Use 1s, 1m, 1h, 1d, 1y.")
             return
     except ValueError:
         if duration.lower() != "permanent":
-            await ctx.send("Invalid duration format. Use 1s, 1m, 1h, 1d, 1y, or 'permanent'.", ephemeral=True)
+            await _send_error_embed(ctx, "Invalid duration format. Use 1s, 1m, 1h, 1d, 1y, or 'permanent'.")
             return
         # If 'permanent', expires_at remains None
 
@@ -2064,7 +2131,7 @@ async def mute_user(ctx: commands.Context, member: discord.Member, duration: str
                 )
 
                 await cursor.execute(
-                    "INSERT INTO mutes (discord_id, reason, issued_by, expires_at) VALUES (%s, %s, %s, %s)",
+                    "INSERT INTO mutes (discord_id, reason, issued_by, expires_at, active) VALUES (%s, %s, %s, %s, TRUE)",
                     (member.id, reason, ctx.author.id, expires_at)
                 )
                 await conn.commit()
@@ -2073,30 +2140,14 @@ async def mute_user(ctx: commands.Context, member: discord.Member, duration: str
 
                 muted_role = get_role_by_name(ctx.guild, MUTED_ROLE_NAME)
                 if not muted_role:
-                    await ctx.send("Muted role not found. Please configure it.")
+                    await _send_error_embed(ctx, "Muted role not found. Please configure it.")
                     return
 
                 try:
                     await member.add_roles(muted_role, reason=reason)
                 except discord.Forbidden:
-                    await ctx.send("I don't have permissions to assign the 'Muted' role.")
+                    await _send_error_embed(ctx, "I don't have permissions to assign the 'Muted' role. Ensure my role is above the 'Muted' role.")
                     return
-
-                # Create the detailed embed
-                detailed_embed = create_embed(
-                    title="User Muted",
-                    description=f"<@{member.id}> has been muted {duration_text}.",
-                    color=discord.Color.orange(),
-                    fields=[
-                        {"name": "User", "value": f"<@{member.id}> ({member.id})", "inline": True},
-                        {"name": "Reason", "value": reason, "inline": True},
-                        {"name": "Muted By", "value": f"<@{ctx.author.id}>", "inline": True},
-                        {"name": "Duration", "value": duration_text, "inline": True},
-                        {"name": "Mute ID", "value": str(mute_id), "inline": True}
-                    ]
-                )
-                if expires_at:
-                    detailed_embed.add_field(name="Expires At", value=expires_at.strftime("%Y-%m-%d %H:%M:%S UTC"), inline=False)
 
                 # Send embed to user
                 user_embed = create_embed(
@@ -2111,55 +2162,76 @@ async def mute_user(ctx: commands.Context, member: discord.Member, duration: str
                 except discord.Forbidden:
                     print(f"Could not DM {member.display_name} about the mute.")
 
-                # Send detailed embed to log channel
-                await send_log_embed(ctx.guild, MUTE_LOG_CHANNEL_ID, MUTE_LOG_CHANNEL_NAME, detailed_embed)
+                # Send embed to log channel
+                log_embed = create_embed(
+                    title="User Muted (Log)",
+                    description=f"<@{member.id}> has been muted.",
+                    color=discord.Color.orange(),
+                    fields=[
+                        {"name": "User", "value": f"<@{member.id}> ({member.id})", "inline": True},
+                        {"name": "Reason", "value": reason, "inline": True},
+                        {"name": "Muted By", "value": f"<@{ctx.author.id}>", "inline": True},
+                        {"name": "Duration", "value": duration_text, "inline": True},
+                        {"name": "Mute ID", "value": str(mute_id), "inline": True}
+                    ]
+                )
+                if expires_at:
+                    log_embed.add_field(name="Expires At", value=expires_at.strftime("%Y-%m-%d %H:%M:%S UTC"), inline=False)
+                await send_log_embed(ctx.guild, MUTE_LOG_CHANNEL_ID, MUTE_LOG_CHANNEL_NAME, log_embed)
                 
-                # Send detailed embed to current channel
-                await ctx.send(embed=detailed_embed)
+                # Send confirmation embed to current channel
+                confirmation_embed = create_embed(
+                    title="User Muted",
+                    description=f"Successfully muted {member.mention} {duration_text} (Mute ID: `{mute_id}`).\nDetails logged in <#{MUTE_LOG_CHANNEL_ID}>.",
+                    color=discord.Color.orange()
+                )
+                await ctx.send(embed=confirmation_embed)
 
             except aiomysql.Error as e:
-                await ctx.send(f"An error occurred while muting: {e}. Ensure the user exists in the database.")
+                await _send_error_embed(ctx, f"An error occurred while muting: {e}. Ensure the user exists in the database.")
 
 @bot.command(name="unmute")
-@commands.has_any_role(MODERATOR_ROLE_NAME, ADMIN_STAFF_ROLE_NAME, MANAGER_ROLE_NAME, PI_ROLE_NAME)
+@commands.has_any_role(MODERATOR_ROLE_NAME, ADMIN_STAFF_ROLE_NAME, MANAGER_ROLE_ROLE_NAME, PI_ROLE_NAME)
 async def unmute_user(ctx: commands.Context, member: discord.Member, *, reason: str = "No reason provided."):
     await ctx.message.add_reaction("⌛")
     if db_pool is None:
-        await ctx.send("Database not connected.")
+        await _send_error_embed(ctx, "Database not connected.")
         return
     
     muted_role = get_role_by_name(ctx.guild, MUTED_ROLE_NAME)
     if not muted_role:
-        await ctx.send("Muted role not found. Please configure it.")
+        await _send_error_embed(ctx, "Muted role not found. Please configure it.")
         return
 
     async with db_pool.acquire() as conn:
         async with conn.cursor() as cursor:
             try:
+                # Update all active mutes for this user to inactive, and record removal details
                 await cursor.execute(
                     "UPDATE mutes SET active = FALSE, removed_by = %s, removed_reason = %s, removed_at = NOW() WHERE discord_id = %s AND active = TRUE",
                     (ctx.author.id, reason, member.id)
                 )
+                rows_affected = cursor.rowcount
                 await conn.commit()
+
+                if rows_affected == 0:
+                    await _send_error_embed(ctx, f"{member.display_name} does not have an active mute record in the database.")
+                    # Still attempt to remove role in case DB is out of sync
+                    if muted_role in member.roles:
+                        try:
+                            await member.remove_roles(muted_role, reason=f"Manually unmuted by {ctx.author.name}: {reason} (No active DB record)")
+                            await ctx.send(f"Removed 'Muted' role from {member.mention}, but no active mute record found in DB.")
+                        except discord.Forbidden:
+                            await _send_error_embed(ctx, f"I don't have permissions to remove the 'Muted' role from {member.display_name}.")
+                    return
+
 
                 if muted_role in member.roles:
                     try:
                         await member.remove_roles(muted_role, reason=f"Unmuted by {ctx.author.name}: {reason}")
                     except discord.Forbidden:
-                        await ctx.send(f"I don't have permissions to remove the 'Muted' role from {member.display_name}.")
+                        await _send_error_embed(ctx, f"I don't have permissions to remove the 'Muted' role from {member.display_name}. Ensure my role is above the 'Muted' role.")
                         return
-
-                # Create the detailed embed
-                detailed_embed = create_embed(
-                    title="User Unmuted",
-                    description=f"<@{member.id}> has been unmuted.",
-                    color=discord.Color.green(),
-                    fields=[
-                        {"name": "User", "value": f"<@{member.id}> ({member.id})", "inline": True},
-                        {"name": "Reason", "value": reason, "inline": True},
-                        {"name": "Unmuted By", "value": f"<@{ctx.author.id}>", "inline": True}
-                    ]
-                )
 
                 user_embed = create_embed(
                     title="You have been Unmuted!",
@@ -2171,20 +2243,34 @@ async def unmute_user(ctx: commands.Context, member: discord.Member, *, reason: 
                 except discord.Forbidden:
                     print(f"Could not DM {member.display_name} about the unmute.")
 
-                # Send detailed embed to log channel
-                await send_log_embed(ctx.guild, MUTE_LOG_CHANNEL_ID, MUTE_LOG_CHANNEL_NAME, detailed_embed)
+                log_embed = create_embed(
+                    title="User Unmuted (Log)",
+                    description=f"<@{member.id}> has been unmuted.",
+                    color=discord.Color.green(),
+                    fields=[
+                        {"name": "User", "value": f"<@{member.id}> ({member.id})", "inline": True},
+                        {"name": "Reason", "value": reason, "inline": True},
+                        {"name": "Unmuted By", "value": f"<@{ctx.author.id}>", "inline": True}
+                    ]
+                )
+                await send_log_embed(ctx.guild, MUTE_LOG_CHANNEL_ID, MUTE_LOG_CHANNEL_NAME, log_embed)
                 
-                # Send detailed embed to current channel
-                await ctx.send(embed=detailed_embed)
+                # Send confirmation embed to current channel
+                confirmation_embed = create_embed(
+                    title="User Unmuted",
+                    description=f"Successfully unmuted {member.mention}.\nDetails logged in <#{MUTE_LOG_CHANNEL_ID}>.",
+                    color=discord.Color.green()
+                )
+                await ctx.send(embed=confirmation_embed)
 
             except aiomysql.Error as e:
-                await ctx.send(f"An error occurred while unmuting: {e}")
+                await _send_error_embed(ctx, f"An error occurred while unmuting: {e}")
 
 
 # Admin Commands (Restricted to Admin+)
 @bot.command(name="purgechat")
 @commands.has_permissions(manage_messages=True)
-@commands.has_any_role(ADMIN_STAFF_ROLE_NAME, MANAGER_ROLE_NAME, PI_ROLE_NAME)
+@commands.has_any_role(ADMIN_STAFF_ROLE_NAME, MANAGER_ROLE_ROLE_NAME, PI_ROLE_NAME)
 async def purge_chat(ctx: commands.Context, message_id: Optional[int] = None):
     await ctx.message.add_reaction("⌛") # Add reaction
     if message_id:
@@ -2198,11 +2284,11 @@ async def purge_chat(ctx: commands.Context, message_id: Optional[int] = None):
                     deleted_count += 1
             await ctx.send(f"Purged {deleted_count} messages after message ID {message_id}.", delete_after=5)
         except discord.NotFound:
-            await ctx.send("Message ID not found in this channel.", delete_after=5)
+            await _send_error_embed(ctx, "Message ID not found in this channel.")
         except discord.Forbidden:
-            await ctx.send("I don't have permissions to delete messages.", delete_after=5)
+            await _send_error_embed(ctx, "I don't have permissions to delete messages.")
         except discord.HTTPException as e:
-            await ctx.send(f"An error occurred while purging messages: {e}", delete_after=5)
+            await _send_error_embed(ctx, f"An error occurred while purging messages: {e}")
     else:
         # Purge all messages up to the command message
         deleted_count = 0
@@ -2216,49 +2302,74 @@ async def purge_chat(ctx: commands.Context, message_id: Optional[int] = None):
             await ctx.message.delete()
             await ctx.send(f"Purged {deleted_count} messages in this channel.", delete_after=5)
         except discord.Forbidden:
-            await ctx.send("I don't have permissions to delete messages.", delete_after=5)
+            await _send_error_embed(ctx, "I don't have permissions to delete messages.")
         except discord.HTTPException as e:
-            await ctx.send(f"An error occurred while purging messages: {e}", delete_after=5)
+            await _send_error_embed(ctx, f"An error occurred while purging messages: {e}")
 
 
-@bot.group(name="admin", description="Admin commands for bot configuration.")
-@commands.has_any_role(ADMIN_STAFF_ROLE_NAME, MANAGER_ROLE_NAME, PI_ROLE_NAME)
+@bot.group(name="admin", description="Admin commands for bot configuration.") # Changed to bot.group
+@commands.has_any_role(ADMIN_STAFF_ROLE_NAME, MANAGER_ROLE_ROLE_NAME, PI_ROLE_NAME)
 async def admin_group(ctx: commands.Context):
     # This serves as a placeholder for the base =admin command
     # Subcommands will be defined below using @admin_group.command()
     if ctx.invoked_subcommand is None:
-        await ctx.send("Use subcommands like `=admin setpartysize`, `=admin queue`, `=admin queues`, `=admin purgeall`.")
+        info_embed = create_embed(
+            title="Admin Commands",
+            description="Use subcommands like `=admin setpartysize`, `=admin queue`, `=admin queues`, `=admin purgeall`.",
+            color=discord.Color.blue()
+        )
+        await ctx.send(embed=info_embed)
 
 @admin_group.command(name="setpartysize")
-@commands.has_any_role(ADMIN_STAFF_ROLE_NAME, MANAGER_ROLE_NAME, PI_ROLE_NAME)
+@commands.has_any_role(ADMIN_STAFF_ROLE_NAME, MANAGER_ROLE_ROLE_NAME, PI_ROLE_NAME)
 async def admin_set_party_size(ctx: commands.Context, size: str):
     await ctx.message.add_reaction("⌛")
     global party_size
     if size.lower() == "none":
         party_size = None
-        await ctx.send("Party season set to None (captain picking enabled).")
+        confirmation_embed = create_embed(
+            title="Party Season Setting",
+            description="Party season set to None (captain picking enabled).",
+            color=discord.Color.green()
+        )
+        await ctx.send(embed=confirmation_embed)
     elif size.isdigit() and int(size) in [2, 3, 4]:
         party_size = int(size)
-        await ctx.send(f"Party season set to size {party_size}.")
+        confirmation_embed = create_embed(
+            title="Party Season Setting",
+            description=f"Party season set to size {party_size}.",
+            color=discord.Color.green()
+        )
+        await ctx.send(embed=confirmation_embed)
     else:
-        await ctx.send("Invalid party size. Use 'none', '2', '3', or '4'.")
+        await _send_error_embed(ctx, "Invalid party size. Use 'none', '2', '3', or '4'.")
 
 @admin_group.command(name="queue")
-@commands.has_any_role(ADMIN_STAFF_ROLE_NAME, MANAGER_ROLE_NAME, PI_ROLE_NAME)
+@commands.has_any_role(ADMIN_STAFF_ROLE_NAME, MANAGER_ROLE_ROLE_NAME, PI_ROLE_NAME)
 async def admin_set_queue_status(ctx: commands.Context, status_int: int):
     await ctx.message.add_reaction("⌛")
     global queue_status
     if status_int == 1:
         queue_status = True
-        await ctx.send("Queues are now open globally.")
+        confirmation_embed = create_embed(
+            title="Queue Status",
+            description="Queues are now open globally.",
+            color=discord.Color.green()
+        )
+        await ctx.send(embed=confirmation_embed)
     elif status_int == 0:
         queue_status = False
-        await ctx.send("Queues are now closed globally.")
+        confirmation_embed = create_embed(
+            title="Queue Status",
+            description="Queues are now closed globally.",
+            color=discord.Color.red()
+        )
+        await ctx.send(embed=confirmation_embed)
     else:
-        await ctx.send("Invalid status. Use `1` for open or `0` for closed.")
+        await _send_error_embed(ctx, "Invalid status. Use `1` for open or `0` for closed.")
 
 @admin_group.command(name="queues")
-@commands.has_any_role(ADMIN_STAFF_ROLE_NAME, MANAGER_ROLE_NAME, PI_ROLE_NAME)
+@commands.has_any_role(ADMIN_STAFF_ROLE_NAME, MANAGER_ROLE_ROLE_NAME, PI_ROLE_NAME)
 async def admin_set_active_queues(ctx: commands.Context, *queue_types_str: str):
     await ctx.message.add_reaction("⌛")
     global active_queues
@@ -2268,29 +2379,39 @@ async def admin_set_active_queues(ctx: commands.Context, *queue_types_str: str):
     for q_type_str in queue_types_str:
         if q_type_str.lower() in valid_types:
             if q_type_str.lower() not in QUEUE_VC_MAP:
-                await ctx.send(f"Error: Voice channel ID for `{q_type_str}` is not configured in `QUEUE_VC_MAP`. Cannot activate this queue type.", ephemeral=True)
+                await _send_error_embed(ctx, f"Error: Voice channel ID for `{q_type_str}` is not configured in `QUEUE_VC_MAP`. Cannot activate this queue type.")
                 return # Stop if a VC is not mapped
             new_active_queues.append(q_type_str.lower())
         else:
-            await ctx.send(f"Invalid queue type provided: `{q_type_str}`. Valid types are: {', '.join(valid_types)}", ephemeral=True)
+            await _send_error_embed(ctx, f"Invalid queue type provided: `{q_type_str}`. Valid types are: {', '.join(valid_types)}")
             return
 
     active_queues = new_active_queues
     if not active_queues:
-        await ctx.send("All queues have been deactivated.")
+        confirmation_embed = create_embed(
+            title="Active Queues Updated",
+            description="All queues have been deactivated.",
+            color=discord.Color.orange()
+        )
+        await ctx.send(embed=confirmation_embed)
     else:
-        await ctx.send(f"Active queues set to: {', '.join(active_queues)}")
+        confirmation_embed = create_embed(
+            title="Active Queues Updated",
+            description=f"Active queues set to: {', '.join(active_queues)}",
+            color=discord.Color.green()
+        )
+        await ctx.send(embed=confirmation_embed)
 
 @admin_group.command(name="purgeall")
 @commands.has_any_role(PI_ROLE_NAME) # Only PI can purge all
 async def admin_purge_all_stats(ctx: commands.Context):
     await ctx.message.add_reaction("⌛")
     if db_pool is None:
-        await ctx.send("Database not connected.")
+        await _send_error_embed(ctx, "Database not connected.")
         return
 
     # Add confirmation mechanism
-    confirm_message = await ctx.send("ARE YOU ABSOLUTELY SURE YOU WANT TO PURGE ALL PLAYER STATS (ELO, wins, losses, mvps, streak, games, strikes, bans, mutes)? This action is irreversible. Reply `confirm purge` within 10 seconds to proceed.")
+    confirm_message = await ctx.send("ARE YOU ABSOLUTELY SURE YOU WANT TO PURGE ALL PLAYER STATS? This action is irreversible. Reply `confirm purge` within 10 seconds to proceed.")
 
     def check(m):
         return m.author == ctx.author and m.channel == ctx.channel and m.content.lower() == "confirm purge"
@@ -2304,8 +2425,7 @@ async def admin_purge_all_stats(ctx: commands.Context):
     async with db_pool.acquire() as conn:
         async with conn.cursor() as cursor:
             try:
-                # ONLY RESET ELO AND STATS, DO NOT UNREGISTER
-                await cursor.execute("UPDATE users SET elo = 0, wins = 0, losses = 0, mvps = 0, streak = 0")
+                await cursor.execute("UPDATE users SET elo = 0, wins = 0, losses = 0, mvps = 0, streak = 0, verified = 0")
                 await cursor.execute("DELETE FROM games")
                 await cursor.execute("DELETE FROM game_players")
                 await cursor.execute("DELETE FROM strikes")
@@ -2313,39 +2433,59 @@ async def admin_purge_all_stats(ctx: commands.Context):
                 await cursor.execute("DELETE FROM mutes")
                 await conn.commit()
 
-                # Also reset nicknames for all members (if they have ELO nicknames)
+                # Also clear roles and nicknames for all members
                 guild = ctx.guild
                 for member in guild.members:
-                    if member.nick and '[' in member.nick and ']' in member.nick: # Heuristic for ELO nickname
+                    # Remove all ELO roles
+                    for role_name in ELO_ROLES.keys():
+                        role_obj = get_role_by_name(guild, role_name)
+                        if role_obj and role_obj in member.roles:
+                            try:
+                                await member.remove_roles(role_obj)
+                            except discord.Forbidden:
+                                print(f"Bot lacks permissions to remove role {role_obj.name} from {member.display_name}")
+                    
+                    # Remove punishment roles
+                    for role_name in [BANNED_ROLE_NAME, MUTED_ROLE_NAME, FROZEN_ROLE_NAME, REGISTERED_ROLE_NAME]:
+                         role_obj = get_role_by_name(guild, role_name)
+                         if role_obj and role_obj in member.roles:
+                             try:
+                                await member.remove_roles(role_obj)
+                             except discord.Forbidden:
+                                 print(f"Bot lacks permissions to remove role {role_obj.name} from {member.display_name}")
+                    
+                    # Reset nickname
+                    if member.nick:
                         try:
-                            # Attempt to remove ELO prefix from nickname
-                            if ']' in member.nick:
-                                new_nick = member.nick.split(']', 1)[1].strip()
-                                await member.edit(nick=new_nick if new_nick else None) # Reset to original username if only ELO was there
-                            else:
-                                await member.edit(nick=None) # Fallback to clear if format is unexpected
+                            await member.edit(nick=None) # Reset to original username
                         except discord.Forbidden:
                             print(f"Bot lacks permissions to reset nickname for {member.display_name}")
                         except Exception as e:
                             print(f"Error resetting nickname for {member.display_name}: {e}")
 
-                await ctx.send("All player stats (ELO, wins, losses, mvps, streak), game data, strikes, bans, and mutes have been purged from the database. Nicknames adjusted.")
+                confirmation_embed = create_embed(
+                    title="Database Purged",
+                    description="All player stats and game data have been purged from the database, and relevant roles/nicknames reset.",
+                    color=discord.Color.dark_red()
+                )
+                await ctx.send(embed=confirmation_embed)
+
                 log_embed = create_embed(
-                    title="Database Purge (Stats Only)",
-                    description=f"All player stats (ELO, wins, losses, mvps, streak), game data, strikes, bans, and mutes have been completely purged by {ctx.author.mention}.\n**User registration status remains unchanged.**",
+                    title="Database Purge",
+                    description=f"All player stats and game data have been completely purged by {ctx.author.mention}.",
                     color=discord.Color.dark_red()
                 )
                 await send_log_embed(ctx.guild, STAFF_UPDATES_CHANNEL_ID, STAFF_UPDATES_CHANNEL_NAME, log_embed) # Send to staff updates
             except aiomysql.Error as e:
-                await ctx.send(f"An error occurred during purge: {e}")
+                await _send_error_embed(ctx, f"An error occurred during purge: {e}")
 
 # Game result modification commands (Admin+ only, not under =admin prefix)
 @bot.command(name="vg")
-@commands.has_any_role(ADMIN_STAFF_ROLE_NAME, MANAGER_ROLE_NAME, PI_ROLE_NAME)
+@commands.has_any_role(ADMIN_STAFF_ROLE_NAME, MANAGER_ROLE_ROLE_NAME, PI_ROLE_NAME)
 async def view_game_results(ctx: commands.Context, game_id: int):
     await ctx.message.add_reaction("⌛")
     if db_pool is None:
-        await ctx.send("Database not connected.")
+        await _send_error_embed(ctx, "Database not connected.")
         return
     
     async with db_pool.acquire() as conn:
@@ -2368,7 +2508,7 @@ async def view_game_results(ctx: commands.Context, game_id: int):
                 game_data = await cursor.fetchone()
 
                 if not game_data:
-                    await ctx.send(f"Game ID `{game_id}` not found.")
+                    await _send_error_embed(ctx, f"Game ID `{game_id}` not found.")
                     return
 
                 team1_players = [ign for ign in game_data['team1_igns'].split(',') if ign] if game_data['team1_igns'] else []
@@ -2396,14 +2536,14 @@ async def view_game_results(ctx: commands.Context, game_id: int):
                 await ctx.send(embed=embed)
 
             except aiomysql.Error as e:
-                await ctx.send(f"An error occurred while fetching game details: {e}")
+                await _send_error_embed(ctx, f"An error occurred while fetching game details: {e}")
 
 @bot.command(name="undo")
-@commands.has_any_role(ADMIN_STAFF_ROLE_NAME, MANAGER_ROLE_NAME, PI_ROLE_NAME)
+@commands.has_any_role(ADMIN_STAFF_ROLE_NAME, MANAGER_ROLE_ROLE_NAME, PI_ROLE_NAME)
 async def undo_game(ctx: commands.Context, game_id: int):
     await ctx.message.add_reaction("⌛")
     if db_pool is None:
-        await ctx.send("Database not connected.")
+        await _send_error_embed(ctx, "Database not connected.")
         return
 
     async with db_pool.acquire() as conn:
@@ -2417,13 +2557,13 @@ async def undo_game(ctx: commands.Context, game_id: int):
                 game_info = await cursor.fetchone()
 
                 if not game_info:
-                    await ctx.send(f"Game ID `{game_id}` not found.")
+                    await _send_error_embed(ctx, f"Game ID `{game_id}` not found.")
                     return
                 
                 winning_team, mvp_discord_id, bot_scored = game_info
 
                 if not winning_team:
-                    await ctx.send(f"Game ID `{game_id}` has not been scored yet, nothing to undo.")
+                    await _send_error_embed(ctx, f"Game ID `{game_id}` has not been scored yet, nothing to undo.")
                     return
                 
                 # Get all players in the game
@@ -2435,6 +2575,7 @@ async def undo_game(ctx: commands.Context, game_id: int):
 
                 # Revert ELO and stats for each player
                 for player_id, player_team in players_in_game:
+                    current_elo = await get_player_elo(player_id)
                     elo_change = 0
                     
                     if player_team == winning_team: # This player was on the winning team
@@ -2451,7 +2592,7 @@ async def undo_game(ctx: commands.Context, game_id: int):
                         # No streak change needed for a loss revert as streak would have been reset.
 
                     await update_player_elo_in_db(player_id, elo_change) # Apply reverted ELO change
-                    await update_elo_role(player_id, await get_player_elo(player_id)) # Update ELO role and nickname with actual new ELO
+                    await update_elo_role(player_id, current_elo + elo_change) # Update ELO role and nickname
 
                 # Update game status in DB
                 await cursor.execute(
@@ -2460,7 +2601,12 @@ async def undo_game(ctx: commands.Context, game_id: int):
                 )
                 await conn.commit()
 
-                await ctx.send(f"Game ID `{game_id}` has been successfully undone. Player stats and ELOs have been reverted.")
+                confirmation_embed = create_embed(
+                    title="Game Undone",
+                    description=f"Game ID `{game_id}` has been successfully undone. Player stats and ELOs have been reverted.",
+                    color=discord.Color.orange()
+                )
+                await ctx.send(embed=confirmation_embed)
                 
                 log_embed = create_embed(
                     title="Game Undone",
@@ -2470,36 +2616,36 @@ async def undo_game(ctx: commands.Context, game_id: int):
                 await send_log_embed(ctx.guild, GAME_LOG_CHANNEL_ID, GAME_LOG_CHANNEL_NAME, log_embed)
 
             except aiomysql.Error as e:
-                await ctx.send(f"An error occurred while undoing the game: {e}")
+                await _send_error_embed(ctx, f"An error occurred while undoing the game: {e}")
 
 @bot.command(name="rescore")
-@commands.has_any_role(ADMIN_STAFF_ROLE_NAME, MANAGER_ROLE_NAME, PI_ROLE_NAME)
+@commands.has_any_role(ADMIN_STAFF_ROLE_NAME, MANAGER_ROLE_ROLE_NAME, PI_ROLE_NAME)
 async def rescore_game(ctx: commands.Context, game_id: int, winning_team: int, mvp_player: discord.Member):
     await ctx.message.add_reaction("⌛")
     if db_pool is None:
-        await ctx.send("Database not connected.")
+        await _send_error_embed(ctx, "Database not connected.")
         return
     
     # First, undo the game to reset stats
-    # We pass ctx.channel and ctx.author to simulate the undo command context
-    undo_result = await undo_game(ctx, game_id)
-    if not undo_result: # if undo_game failed or didn't proceed
-        await ctx.send(f"Rescoring aborted: Failed to undo Game ID `{game_id}` first.")
-        return
+    await undo_game(ctx, game_id) # This will send its own message and reaction
 
     # Then, apply the new score
     async with db_pool.acquire() as conn:
         async with conn.cursor() as cursor:
             try:
-                # Check if game exists and is in a state to be scored (status should be 'picking' after undo)
+                # Check if game exists and is in a state to be scored
                 await cursor.execute(
                     "SELECT status FROM games WHERE game_id = %s",
                     (game_id,)
                 )
                 game_status_result = await cursor.fetchone()
 
-                if not game_status_result or game_status_result[0] != 'picking':
-                    await ctx.send(f"Game ID `{game_id}` is not in a valid state for rescoring after undo (current status: {game_status_result[0]}).")
+                if not game_status_result:
+                    await _send_error_embed(ctx, f"Game ID `{game_id}` not found for rescoring.")
+                    return
+                
+                if game_status_result[0] != 'picking': # Should be 'picking' after undo
+                    await _send_error_embed(ctx, f"Game ID `{game_id}` is not in a state to be rescored (status: {game_status_result[0]}).")
                     return
 
                 # Get players in the game to apply scores
@@ -2510,7 +2656,7 @@ async def rescore_game(ctx: commands.Context, game_id: int, winning_team: int, m
                 players_in_game = await cursor.fetchall()
 
                 if not players_in_game:
-                    await ctx.send(f"No players found for Game ID `{game_id}`.")
+                    await _send_error_embed(ctx, f"No players found for Game ID `{game_id}`.")
                     return
 
                 # Apply new ELO and stats
@@ -2540,7 +2686,12 @@ async def rescore_game(ctx: commands.Context, game_id: int, winning_team: int, m
                 )
                 await conn.commit()
 
-                await ctx.send(f"Game ID `{game_id}` has been successfully rescored. Team {winning_team} won with {mvp_player.mention} as MVP.")
+                confirmation_embed = create_embed(
+                    title="Game Rescored",
+                    description=f"Game ID `{game_id}` has been successfully rescored. Team {winning_team} won with {mvp_player.mention} as MVP.",
+                    color=discord.Color.purple()
+                )
+                await ctx.send(embed=confirmation_embed)
 
                 log_embed = create_embed(
                     title="Game Rescored",
@@ -2554,17 +2705,17 @@ async def rescore_game(ctx: commands.Context, game_id: int, winning_team: int, m
                 await send_log_embed(ctx.guild, GAME_LOG_CHANNEL_ID, GAME_LOG_CHANNEL_NAME, log_embed)
 
             except aiomysql.Error as e:
-                await ctx.send(f"An error occurred while rescoring the game: {e}")
+                await _send_error_embed(ctx, f"An error occurred while rescoring the game: {e}")
             except Exception as e:
-                await ctx.send(f"An unexpected error occurred during rescoring: {e}")
+                await _send_error_embed(ctx, f"An unexpected error occurred during rescoring: {e}")
 
 
 @bot.command(name="score")
-@commands.has_any_role(ADMIN_STAFF_ROLE_NAME, MANAGER_ROLE_NAME, PI_ROLE_NAME)
+@commands.has_any_role(ADMIN_STAFF_ROLE_NAME, MANAGER_ROLE_ROLE_NAME, PI_ROLE_NAME)
 async def score_game(ctx: commands.Context, game_id: int, winning_team: int, mvp_player: discord.Member):
     await ctx.message.add_reaction("⌛")
     if db_pool is None:
-        await ctx.send("Database not connected.")
+        await _send_error_embed(ctx, "Database not connected.")
         return
     
     async with db_pool.acquire() as conn:
@@ -2578,11 +2729,11 @@ async def score_game(ctx: commands.Context, game_id: int, winning_team: int, mvp
                 game_status_result = await cursor.fetchone()
 
                 if not game_status_result:
-                    await ctx.send(f"Game ID `{game_id}` not found for scoring.")
+                    await _send_error_embed(ctx, f"Game ID `{game_id}` not found for scoring.")
                     return
                 
                 if game_status_result[0] == 'completed':
-                    await ctx.send(f"Game ID `{game_id}` is already scored. Use `=rescore` to change the result.")
+                    await _send_error_embed(ctx, f"Game ID `{game_id}` is already scored. Use `=rescore` to change the result.")
                     return
 
                 # Get players in the game to apply scores
@@ -2593,7 +2744,7 @@ async def score_game(ctx: commands.Context, game_id: int, winning_team: int, mvp
                 players_in_game = await cursor.fetchall()
 
                 if not players_in_game:
-                    await ctx.send(f"No players found for Game ID `{game_id}`.")
+                    await _send_error_embed(ctx, f"No players found for Game ID `{game_id}`.")
                     return
 
                 # Apply ELO and stats
@@ -2623,7 +2774,12 @@ async def score_game(ctx: commands.Context, game_id: int, winning_team: int, mvp
                 )
                 await conn.commit()
 
-                await ctx.send(f"Game ID `{game_id}` has been successfully scored. Team {winning_team} won with {mvp_player.mention} as MVP.")
+                confirmation_embed = create_embed(
+                    title="Game Scored",
+                    description=f"Game ID `{game_id}` has been successfully scored. Team {winning_team} won with {mvp_player.mention} as MVP.",
+                    color=discord.Color.green()
+                )
+                await ctx.send(embed=confirmation_embed)
 
                 log_embed = create_embed(
                     title="Game Scored",
@@ -2637,19 +2793,19 @@ async def score_game(ctx: commands.Context, game_id: int, winning_team: int, mvp
                 await send_log_embed(ctx.guild, GAME_LOG_CHANNEL_ID, GAME_LOG_CHANNEL_NAME, log_embed)
 
             except aiomysql.Error as e:
-                await ctx.send(f"An error occurred while scoring the game: {e}")
+                await _send_error_embed(ctx, f"An error occurred while scoring the game: {e}")
             except Exception as e:
-                await ctx.send(f"An unexpected error occurred during scoring: {e}")
+                await _send_error_embed(ctx, f"An unexpected error occurred during scoring: {e}")
 
 @bot.command(name="register")
 async def register(ctx: commands.Context, ign: str):
     await ctx.message.add_reaction("⌛")
     if ctx.channel.id != REGISTER_CHANNEL_ID:
-        await ctx.send(f"This command can only be used in <#{REGISTER_CHANNEL_ID}>.", ephemeral=True)
+        await _send_error_embed(ctx, f"This command can only be used in <#{REGISTER_CHANNEL_ID}>.")
         return
 
     if db_pool is None:
-        await ctx.send("Database not connected.")
+        await _send_error_embed(ctx, "Database not connected.")
         return
 
     async with db_pool.acquire() as conn:
@@ -2661,7 +2817,7 @@ async def register(ctx: commands.Context, ign: str):
                     (ign,)
                 )
                 if await cursor.fetchone():
-                    await ctx.send(f"The Minecraft IGN `{ign}` is already registered to another user.")
+                    await _send_error_embed(ctx, f"The Minecraft IGN `{ign}` is already registered to another user.")
                     return
 
                 # Check if user is already registered by Discord ID
@@ -2672,7 +2828,12 @@ async def register(ctx: commands.Context, ign: str):
                 existing_user = await cursor.fetchone()
 
                 if existing_user and existing_user[0] == 1:
-                    await ctx.send(f"You are already registered. Your IGN has been updated to `{ign}`.")
+                    confirmation_embed = create_embed(
+                        title="Already Registered",
+                        description=f"You are already registered. Your IGN has been updated to `{ign}`.",
+                        color=discord.Color.orange()
+                    )
+                    await ctx.send(embed=confirmation_embed)
                     await cursor.execute(
                         "UPDATE users SET minecraft_ign = %s WHERE discord_id = %s",
                         (ign, ctx.author.id)
@@ -2683,7 +2844,12 @@ async def register(ctx: commands.Context, ign: str):
                         "INSERT INTO users (discord_id, minecraft_ign, elo, wins, losses, mvps, streak, verified) VALUES (%s, %s, %s, %s, %s, %s, %s, %s) ON DUPLICATE KEY UPDATE minecraft_ign = VALUES(minecraft_ign), verified = 1",
                         (ctx.author.id, ign, 0, 0, 0, 0, 0, 1) # Set verified to 1 (True)
                     )
-                    await ctx.send(f"Congratulations {ctx.author.mention}, you have successfully registered with Minecraft IGN: `{ign}`!")
+                    confirmation_embed = create_embed(
+                        title="Registration Successful",
+                        description=f"Congratulations {ctx.author.mention}, you have successfully registered with Minecraft IGN: `{ign}`!",
+                        color=discord.Color.green()
+                    )
+                    await ctx.send(embed=confirmation_embed)
 
                 await conn.commit()
 
@@ -2718,17 +2884,17 @@ async def register(ctx: commands.Context, ign: str):
                 await send_log_embed(ctx.guild, REGISTER_LOG_CHANNEL_ID, REGISTER_LOG_CHANNEL_NAME, log_embed)
 
             except aiomysql.Error as e:
-                await ctx.send(f"An error occurred during registration: {e}")
+                await _send_error_embed(ctx, f"An error occurred during registration: {e}")
             except Exception as e:
-                await ctx.send(f"An unexpected error occurred during registration: {e}")
+                await _send_error_embed(ctx, f"An unexpected error occurred during registration: {e}")
 
 
 @bot.command(name="forceregister")
-@commands.has_any_role(STAFF_ROLE_NAME, ADMIN_STAFF_ROLE_NAME, MANAGER_ROLE_NAME, PI_ROLE_NAME)
+@commands.has_any_role(STAFF_ROLE_NAME, ADMIN_STAFF_ROLE_NAME, MANAGER_ROLE_ROLE_NAME, PI_ROLE_NAME)
 async def force_register(ctx: commands.Context, member: discord.Member, ign: str):
     await ctx.message.add_reaction("⌛")
     if db_pool is None:
-        await ctx.send("Database not connected.")
+        await _send_error_embed(ctx, "Database not connected.")
         return
 
     async with db_pool.acquire() as conn:
@@ -2742,13 +2908,23 @@ async def force_register(ctx: commands.Context, member: discord.Member, ign: str
                 result = await cursor.fetchone()
                 
                 if result and result[0] == 1:
-                    await ctx.send(f"{member.mention} is already registered. Updating IGN if different.")
+                    confirmation_embed = create_embed(
+                        title="User Already Registered",
+                        description=f"{member.mention} is already registered. Updating IGN if different.",
+                        color=discord.Color.orange()
+                    )
+                    await ctx.send(embed=confirmation_embed)
                     await cursor.execute(
                         "UPDATE users SET minecraft_ign = %s WHERE discord_id = %s",
                         (ign, member.id)
                     )
                     await conn.commit()
-                    await ctx.send(f"Updated IGN for {member.mention} to `{ign}`.")
+                    updated_embed = create_embed(
+                        title="IGN Updated (Force)",
+                        description=f"Updated IGN for {member.mention} to `{ign}`.",
+                        color=discord.Color.green()
+                    )
+                    await ctx.send(embed=updated_embed)
                     # Log update to staff updates (as requested, updates go here)
                     log_embed = create_embed(
                         title="User IGN Updated (Force)",
@@ -2787,7 +2963,12 @@ async def force_register(ctx: commands.Context, member: discord.Member, ign: str
 
                 await update_elo_role(member.id, 0) # Set initial ELO role (Iron) and nickname
 
-                await ctx.send(f"Successfully force-registered {member.mention} with IGN: `{ign}`.")
+                confirmation_embed = create_embed(
+                    title="Force Registration Successful",
+                    description=f"Successfully force-registered {member.mention} with IGN: `{ign}`.",
+                    color=discord.Color.green()
+                )
+                await ctx.send(embed=confirmation_embed)
                 # Log new force-registration to dedicated registration channel
                 log_embed = create_embed(
                     title="User Force Registered",
@@ -2802,38 +2983,37 @@ async def force_register(ctx: commands.Context, member: discord.Member, ign: str
                 await send_log_embed(ctx.guild, REGISTER_LOG_CHANNEL_ID, REGISTER_LOG_CHANNEL_NAME, log_embed)
 
             except aiomysql.Error as e:
-                await ctx.send(f"An error occurred during force registration: {e}")
-
+                await _send_error_embed(ctx, f"An error occurred during force registration: {e}")
 
 # Screenshare Command
 @bot.command(name="ss")
-@commands.has_any_role(MODERATOR_ROLE_NAME, ADMIN_STAFF_ROLE_NAME, MANAGER_ROLE_NAME, PI_ROLE_NAME)
+@commands.has_any_role(MODERATOR_ROLE_NAME, ADMIN_STAFF_ROLE_NAME, MANAGER_ROLE_ROLE_NAME, PI_ROLE_NAME)
 async def screenshare_command(ctx: commands.Context, member: discord.Member, *, reason: str):
     await ctx.message.add_reaction("⌛") # Add reaction
     # Check for attachment
     if not ctx.message.attachments:
-        await ctx.send("Please attach an image to initiate a screenshare request.", ephemeral=True)
+        await _send_error_embed(ctx, "Please attach an image to initiate a screenshare request.")
         return
 
     # Create ticket channel under the correct category
     ss_category = await get_channel_or_create_category(ctx.guild, TICKET_CATEGORY_ID, "Tickets", is_category=True)
     if not ss_category:
-        await ctx.send("Error: Could not find or create a category for screenshare tickets. Please contact an administrator.", ephemeral=True)
+        await _send_error_embed(ctx, "Error: Could not find or create a category for screenshare tickets. Please contact an administrator.")
         return
 
     frozen_role = get_role_by_name(ctx.guild, FROZEN_ROLE_NAME)
     if not frozen_role:
-        await ctx.send("Error: 'Frozen' role not found. Please configure it.", ephemeral=True)
+        await _send_error_embed(ctx, "Error: 'Frozen' role not found. Please configure it.")
         return
     
     # Assign Frozen role
     try:
         await member.add_roles(frozen_role, reason="Initiated screenshare.")
     except discord.Forbidden:
-        await ctx.send(f"I don't have permissions to assign the '{FROZEN_ROLE_NAME}' role to {member.display_name}.", ephemeral=True)
+        await _send_error_embed(ctx, f"I don't have permissions to assign the '{FROZEN_ROLE_NAME}' role to {member.display_name}.")
         return
     except Exception as e:
-        await ctx.send(f"An error occurred while assigning the '{FROZEN_ROLE_NAME}' role: {e}", ephemeral=True)
+        await _send_error_embed(ctx, f"An error occurred while assigning the '{FROZEN_ROLE_NAME}' role: {e}")
         return
 
     overwrites = {
@@ -2878,75 +3058,33 @@ async def screenshare_command(ctx: commands.Context, member: discord.Member, *, 
 
     active_screenshare_tickets[ticket_channel.id] = view
 
-    await ctx.send(f"Screenshare ticket created: {ticket_channel.mention}", ephemeral=True)
-
-    log_content = {
-        "User": f"<@{member.id}> ({member.id})",
-        "Requested By": f"<@{ctx.author.id}> ({ctx.author.id})",
-        "Reason": reason,
-        "Ticket Channel": ticket_channel.mention,
-        "Ticket Channel ID": ticket_channel.id
-    }
-    await send_log_html(ctx.guild, SCREENSNARE_LOG_CHANNEL_ID, SCREENSNARE_LOG_CHANNEL_NAME, "Screenshare Ticket Created", log_content)
-
-# Prefix command for creating tickets (now works)
-@bot.command(name="createticket")
-@commands.has_permissions(send_messages=True) # Basic permission
-async def create_ticket_prefix(ctx: commands.Context, *, topic: str):
-    await ctx.message.add_reaction("⌛")
-    guild = ctx.guild
-    member = ctx.author
-
-    ticket_category = await get_channel_or_create_category(guild, TICKET_CATEGORY_ID, "Tickets", is_category=True)
-    if not ticket_category:
-        await ctx.send("Error: Could not find or create a category for tickets. Please contact an administrator.", ephemeral=True)
-        return
-
-    overwrites = {
-        guild.default_role: discord.PermissionOverwrite(read_messages=False),
-        member: discord.PermissionOverwrite(read_messages=True, send_messages=True)
-    }
-
-    # Add staff roles to overwrites
-    for role_name in [MODERATOR_ROLE_NAME, ADMIN_STAFF_ROLE_NAME, MANAGER_ROLE_NAME, PI_ROLE_NAME, STAFF_ROLE_NAME]:
-        role = get_role_by_name(guild, role_name)
-        if role:
-            overwrites[role] = discord.PermissionOverwrite(read_messages=True, send_messages=True)
-
-    ticket_channel = await guild.create_text_channel(
-        f"ticket-{member.name}",
-        category=ticket_category,
-        overwrites=overwrites,
-        topic=topic
+    confirmation_embed = create_embed(
+        title="Screenshare Ticket Created",
+        description=f"Screenshare ticket created: {ticket_channel.mention}",
+        color=discord.Color.green()
     )
+    await ctx.send(embed=confirmation_embed)
 
-    view = TicketView(member)
-    embed = create_embed(
-        title=f"New Ticket: {topic}",
-        description=f"Welcome {member.mention}! A staff member will be with you shortly. Please explain your issue in detail.",
-        color=discord.Color.blue()
+    log_embed = create_embed(
+        title="Screenshare Ticket Created (Log)",
+        description=f"A screenshare ticket for {member.mention} has been created by {ctx.author.mention}.",
+        color=discord.Color.orange(),
+        fields=[
+            {"name": "User", "value": f"<@{member.id}> ({member.id})", "inline": True},
+            {"name": "Requested By", "value": f"<@{ctx.author.id}> ({ctx.author.id})", "inline": True},
+            {"name": "Reason", "value": reason, "inline": False},
+            {"name": "Ticket Channel", "value": ticket_channel.mention, "inline": True}
+        ]
     )
-    sent_message = await ticket_channel.send(embed=embed, view=view)
-    view.message = sent_message # Store message reference for the view
-
-    await ctx.send(f"Your ticket has been created: {ticket_channel.mention}", ephemeral=True)
-
-    log_content = {
-        "User": f"<@{member.id}> ({member.id})",
-        "Topic": topic,
-        "Ticket Channel": ticket_channel.mention,
-        "Ticket Channel ID": ticket_channel.id
-    }
-    await send_log_html(guild, TICKET_LOG_CHANNEL_ID, TICKET_LOG_CHANNEL_NAME, "Ticket Created", log_content)
-
+    await send_log_embed(ctx.guild, SCREENSNARE_LOG_CHANNEL_ID, SCREENSNARE_LOG_CHANNEL_NAME, log_embed)
 
 # New command for deleting ticket channels
 @bot.command(name="delete")
-@commands.has_any_role(MANAGER_ROLE_NAME, PI_ROLE_NAME) # Only Manager+
+@commands.has_any_role(MANAGER_ROLE_ROLE_NAME, PI_ROLE_NAME) # Only Manager+
 async def delete_ticket_channel(ctx: commands.Context, *, reason: str = "No reason provided."):
     await ctx.message.add_reaction("⌛") # Add reaction
     if "ticket" not in ctx.channel.name and "screenshare" not in ctx.channel.name:
-        await ctx.send("This command can only be used in a ticket or screenshare channel.", ephemeral=True)
+        await _send_error_embed(ctx, "This command can only be used in a ticket or screenshare channel.")
         return
 
     try:
@@ -2959,25 +3097,25 @@ async def delete_ticket_channel(ctx: commands.Context, *, reason: str = "No reas
         await asyncio.sleep(5) # Give time for the embed to be seen
         await ctx.channel.delete(reason=f"Channel deleted by {ctx.author.name}: {reason}")
     except discord.Forbidden:
-        await ctx.send("I don't have permissions to delete this channel.")
+        await _send_error_embed(ctx, "I don't have permissions to delete this channel.")
     except Exception as e:
-        await ctx.send(f"An error occurred while deleting the channel: {e}")
+        await _send_error_embed(ctx, f"An error occurred while deleting the channel: {e}")
 
 @bot.command(name="strikerequest", aliases=["sr"])
 async def strike_request_command(ctx: commands.Context, member: discord.Member, *, reason: str):
     await ctx.message.add_reaction("⌛")
     if ctx.channel.id != STRIKE_REQUEST_CHANNEL_ID:
-        await ctx.send(f"This command can only be used in <#{STRIKE_REQUEST_CHANNEL_ID}>.", ephemeral=True)
+        await _send_error_embed(ctx, f"This command can only be used in <#{STRIKE_REQUEST_CHANNEL_ID}>.")
         return
     
     if not ctx.message.attachments:
-        await ctx.send("Please attach proof (an image) for the strike request.", ephemeral=True)
+        await _send_error_embed(ctx, "Please attach proof (an image) for the strike request.")
         return
 
     # Create ticket channel under the strike requests category
     sr_category = await get_channel_or_create_category(ctx.guild, STRIKE_REQUESTS_CATEGORY_ID, "Strike Requests", is_category=True)
     if not sr_category:
-        await ctx.send("Error: Could not find or create a category for strike requests. Please contact an administrator.", ephemeral=True)
+        await _send_error_embed(ctx, "Error: Could not find or create a category for strike requests. Please contact an administrator.")
         return
 
     overwrites = {
@@ -2986,7 +3124,7 @@ async def strike_request_command(ctx: commands.Context, member: discord.Member, 
         # Allow staff to see and vote
         get_role_by_name(ctx.guild, MODERATOR_ROLE_NAME): discord.PermissionOverwrite(read_messages=True, send_messages=False),
         get_role_by_name(ctx.guild, ADMIN_STAFF_ROLE_NAME): discord.PermissionOverwrite(read_messages=True, send_messages=False),
-        get_role_by_name(ctx.guild, MANAGER_ROLE_NAME): discord.PermissionOverwrite(read_messages=True, send_messages=False), # Standardized role name
+        get_role_by_name(ctx.guild, MANAGER_ROLE_ROLE_NAME): discord.PermissionOverwrite(read_messages=True, send_messages=False),
         get_role_by_name(ctx.guild, PI_ROLE_NAME): discord.PermissionOverwrite(read_messages=True, send_messages=False)
     }
 
@@ -3022,7 +3160,12 @@ async def strike_request_command(ctx: commands.Context, member: discord.Member, 
 
     active_strike_requests[ticket_channel.id] = view
 
-    await ctx.send(f"Strike request ticket created: {ticket_channel.mention}", ephemeral=True)
+    confirmation_embed = create_embed(
+        title="Strike Request Created",
+        description=f"Strike request ticket created: {ticket_channel.mention}",
+        color=discord.Color.green()
+    )
+    await ctx.send(embed=confirmation_embed)
 
     log_embed = create_embed(
         title="Strike Request Created (Log)",
@@ -3042,7 +3185,7 @@ async def show_history(ctx: commands.Context, member: Optional[discord.Member] =
     await ctx.message.add_reaction("⌛")
     member = member or ctx.author
     if db_pool is None:
-        await ctx.send("Database not connected.")
+        await _send_error_embed(ctx, "Database not connected.")
         return
 
     async with db_pool.acquire() as conn:
@@ -3052,27 +3195,32 @@ async def show_history(ctx: commands.Context, member: Optional[discord.Member] =
                 
                 # Fetch strikes
                 await cursor.execute(
-                    "SELECT strike_id, reason, issued_by, strike_date FROM strikes WHERE discord_id = %s ORDER BY strike_date DESC",
+                    "SELECT strike_id, reason, issued_by, issued_at FROM strikes WHERE discord_id = %s ORDER BY issued_at DESC", # Changed strike_date to issued_at for consistency with other tables
                     (member.id,)
                 )
                 history_data['strikes'] = await cursor.fetchall()
 
                 # Fetch bans
                 await cursor.execute(
-                    "SELECT ban_id, reason, issued_by, issued_at, expires_at, active FROM bans WHERE discord_id = %s ORDER BY issued_at DESC",
+                    "SELECT ban_id, reason, issued_by, issued_at, expires_at, active, removed_by, removed_reason, removed_at FROM bans WHERE discord_id = %s ORDER BY issued_at DESC",
                     (member.id,)
                 )
                 history_data['bans'] = await cursor.fetchall()
 
                 # Fetch mutes
                 await cursor.execute(
-                    "SELECT mute_id, reason, issued_by, issued_at, expires_at, active FROM mutes WHERE discord_id = %s ORDER BY issued_at DESC",
+                    "SELECT mute_id, reason, issued_by, issued_at, expires_at, active, removed_by, removed_reason, removed_at FROM mutes WHERE discord_id = %s ORDER BY issued_at DESC",
                     (member.id,)
                 )
                 history_data['mutes'] = await cursor.fetchall()
 
                 if not any(history_data.values()):
-                    await ctx.send(f"No history found for {member.display_name}.")
+                    info_embed = create_embed(
+                        title="No History Found",
+                        description=f"No disciplinary history found for {member.display_name}.",
+                        color=discord.Color.blue()
+                    )
+                    await ctx.send(embed=info_embed)
                     return
 
                 # Create pages for embeds
@@ -3086,7 +3234,7 @@ async def show_history(ctx: commands.Context, member: Optional[discord.Member] =
                             f"**ID:** `{strike['strike_id']}`\n"
                             f"**Reason:** {strike['reason']}\n"
                             f"**Issued By:** <@{strike['issued_by']}>\n"
-                            f"**Date:** {strike['strike_date'].strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+                            f"**Date:** {strike['issued_at'].strftime('%Y-%m-%d %H:%M:%S')}\n\n"
                         )
                     pages.append(create_embed(
                         title=f"{member.display_name}'s Strike History",
@@ -3100,13 +3248,18 @@ async def show_history(ctx: commands.Context, member: Optional[discord.Member] =
                     for ban in history_data['bans']:
                         status = "Active" if ban['active'] else "Expired/Removed"
                         expires = ban['expires_at'].strftime('%Y-%m-%d %H:%M:%S') if ban['expires_at'] else "Permanent"
+                        removed_info = ""
+                        if ban['removed_by'] and ban['removed_at']:
+                            removed_info = f"Removed by <@{ban['removed_by']}> on {ban['removed_at'].strftime('%Y-%m-%d %H:%M:%S')} (Reason: {ban['removed_reason'] or 'N/A'})."
+                        
                         ban_desc += (
                             f"**ID:** `{ban['ban_id']}`\n"
                             f"**Status:** {status}\n"
                             f"**Reason:** {ban['reason']}\n"
                             f"**Issued By:** <@{ban['issued_by']}>\n"
                             f"**Issued On:** {ban['issued_at'].strftime('%Y-%m-%d %H:%M:%S')}\n"
-                            f"**Expires On:** {expires}\n\n"
+                            f"**Expires On:** {expires}\n"
+                            f"{removed_info}\n\n"
                         )
                     pages.append(create_embed(
                         title=f"{member.display_name}'s Ban History",
@@ -3120,13 +3273,18 @@ async def show_history(ctx: commands.Context, member: Optional[discord.Member] =
                     for mute in history_data['mutes']:
                         status = "Active" if mute['active'] else "Expired/Removed"
                         expires = mute['expires_at'].strftime('%Y-%m-%d %H:%M:%S') if mute['expires_at'] else "Permanent"
+                        removed_info = ""
+                        if mute['removed_by'] and mute['removed_at']:
+                            removed_info = f"Removed by <@{mute['removed_by']}> on {mute['removed_at'].strftime('%Y-%m-%d %H:%M:%S')} (Reason: {mute['removed_reason'] or 'N/A'})."
+                        
                         mute_desc += (
                             f"**ID:** `{mute['mute_id']}`\n"
                             f"**Status:** {status}\n"
                             f"**Reason:** {mute['reason']}\n"
                             f"**Issued By:** <@{mute['issued_by']}>\n"
                             f"**Issued On:** {mute['issued_at'].strftime('%Y-%m-%d %H:%M:%S')}\n"
-                            f"**Expires On:** {expires}\n\n"
+                            f"**Expires On:** {expires}\n"
+                            f"{removed_info}\n\n"
                         )
                     pages.append(create_embed(
                         title=f"{member.display_name}'s Mute History",
@@ -3135,7 +3293,12 @@ async def show_history(ctx: commands.Context, member: Optional[discord.Member] =
                     ))
                 
                 if not pages:
-                    await ctx.send(f"No disciplinary history found for {member.display_name}.")
+                    info_embed = create_embed(
+                        title="No Disciplinary History",
+                        description=f"No disciplinary history found for {member.display_name}.",
+                        color=discord.Color.blue()
+                    )
+                    await ctx.send(embed=info_embed)
                     return
 
                 # Pagination logic for embeds
@@ -3168,7 +3331,7 @@ async def show_history(ctx: commands.Context, member: Optional[discord.Member] =
                             break
 
             except aiomysql.Error as e:
-                await ctx.send(f"An error occurred while fetching history: {e}")
+                await _send_error_embed(ctx, f"An error occurred while fetching history: {e}")
 
 
 # Leaderboard commands
@@ -3176,7 +3339,7 @@ async def show_history(ctx: commands.Context, member: Optional[discord.Member] =
 async def show_leaderboard(ctx: commands.Context, stat_type: str = "elo"):
     await ctx.message.add_reaction("⌛")
     if db_pool is None:
-        await ctx.send("Database not connected.")
+        await _send_error_embed(ctx, "Database not connected.")
         return
     
     stat_type = stat_type.lower()
@@ -3190,7 +3353,7 @@ async def show_leaderboard(ctx: commands.Context, stat_type: str = "elo"):
     }
     
     if stat_type not in valid_stats:
-        await ctx.send(f"Invalid leaderboard type. Choose from: {', '.join(valid_stats.keys())}")
+        await _send_error_embed(ctx, f"Invalid leaderboard type. Choose from: {', '.join(valid_stats.keys())}")
         return
 
     order_by_column = valid_stats[stat_type]
@@ -3214,7 +3377,12 @@ async def show_leaderboard(ctx: commands.Context, stat_type: str = "elo"):
                 results = await cursor.fetchall()
 
                 if not results:
-                    await ctx.send(f"No data available for {stat_type} leaderboard.")
+                    info_embed = create_embed(
+                        title=f"No Data for {stat_type.capitalize()} Leaderboard",
+                        description=f"No data available for {stat_type} leaderboard.",
+                        color=discord.Color.blue()
+                    )
+                    await ctx.send(embed=info_embed)
                     return
 
                 leaderboard_text = ""
@@ -3236,7 +3404,7 @@ async def show_leaderboard(ctx: commands.Context, stat_type: str = "elo"):
                 await ctx.send(embed=embed)
 
             except aiomysql.Error as e:
-                await ctx.send(f"An error occurred while fetching the leaderboard: {e}")
+                await _send_error_embed(ctx, f"An error occurred while fetching the leaderboard: {e}")
 
 
 # Slash Commands
@@ -3250,7 +3418,7 @@ async def create_ticket_slash(interaction: discord.Interaction, topic: str):
 
     ticket_category = await get_channel_or_create_category(guild, TICKET_CATEGORY_ID, "Tickets", is_category=True)
     if not ticket_category:
-        await interaction.followup.send("Error: Could not find or create a category for tickets. Please contact an administrator.")
+        await _send_error_embed(interaction, "Error: Could not find or create a category for tickets. Please contact an administrator.")
         return
 
     overwrites = {
@@ -3259,7 +3427,7 @@ async def create_ticket_slash(interaction: discord.Interaction, topic: str):
     }
 
     # Add staff roles to overwrites
-    for role_name in [MODERATOR_ROLE_NAME, ADMIN_STAFF_ROLE_NAME, MANAGER_ROLE_NAME, PI_ROLE_NAME, STAFF_ROLE_NAME]:
+    for role_name in [MODERATOR_ROLE_NAME, ADMIN_STAFF_ROLE_NAME, MANAGER_ROLE_ROLE_NAME, PI_ROLE_NAME, STAFF_ROLE_NAME]:
         role = get_role_by_name(guild, role_name)
         if role:
             overwrites[role] = discord.PermissionOverwrite(read_messages=True, send_messages=True)
@@ -3277,98 +3445,125 @@ async def create_ticket_slash(interaction: discord.Interaction, topic: str):
         description=f"Welcome {member.mention}! A staff member will be with you shortly. Please explain your issue in detail.",
         color=discord.Color.blue()
     )
-    sent_message = await ticket_channel.send(embed=embed, view=view)
-    view.message = sent_message # Store message reference for the view
+    await ticket_channel.send(embed=embed, view=view)
+    
+    confirmation_embed = create_embed(
+        title="Ticket Created",
+        description=f"Your ticket has been created: {ticket_channel.mention}",
+        color=discord.Color.green()
+    )
+    await interaction.followup.send(embed=confirmation_embed)
 
-    await interaction.followup.send(f"Your ticket has been created: {ticket_channel.mention}")
-
-    log_content = {
-        "User": f"<@{member.id}> ({member.id})",
-        "Topic": topic,
-        "Ticket Channel": ticket_channel.mention,
-        "Ticket Channel ID": ticket_channel.id
-    }
-    await send_log_html(guild, TICKET_LOG_CHANNEL_ID, TICKET_LOG_CHANNEL_NAME, "Ticket Created", log_content)
+    log_embed = create_embed(
+        title="Ticket Created (Log)",
+        description=f"A new ticket has been created by {member.mention}.",
+        color=discord.Color.blue(),
+        fields=[
+            {"name": "User", "value": f"<@{member.id}> ({member.id})", "inline": True},
+            {"name": "Topic", "value": topic, "inline": True},
+            {"name": "Ticket Channel", "value": ticket_channel.mention, "inline": True}
+        ]
+    )
+    await send_log_embed(guild, TICKET_LOG_CHANNEL_ID, TICKET_LOG_CHANNEL_NAME, log_embed)
 
 
 @bot.tree.command(name="addusertoticket", description="Add a user to the current ticket.")
 @app_commands.describe(user="The user to add.")
-@commands.has_any_role(STAFF_ROLE_NAME, MODERATOR_ROLE_NAME, ADMIN_STAFF_ROLE_NAME, MANAGER_ROLE_NAME, PI_ROLE_NAME)
+@commands.has_any_role(STAFF_ROLE_NAME, MODERATOR_ROLE_NAME, ADMIN_STAFF_ROLE_NAME, MANAGER_ROLE_ROLE_NAME, PI_ROLE_NAME)
 async def add_user_to_ticket_slash(interaction: discord.Interaction, user: discord.Member):
     await interaction.response.defer(ephemeral=True) # Acknowledge immediately
     
     if "ticket" not in interaction.channel.name and "screenshare" not in interaction.channel.name:
-        await interaction.followup.send("This command can only be used in a ticket or screenshare channel.")
+        await _send_error_embed(interaction, "This command can only be used in a ticket or screenshare channel.")
         return
 
     try:
         await interaction.channel.set_permissions(user, read_messages=True, send_messages=True)
-        await interaction.followup.send(f"Added {user.mention} to this ticket.")
+        confirmation_embed = create_embed(
+            title="User Added",
+            description=f"Added {user.mention} to this ticket.",
+            color=discord.Color.green()
+        )
+        await interaction.followup.send(embed=confirmation_embed)
         await interaction.channel.send(f"{user.mention} has been added to the ticket by {interaction.user.mention}.")
     except discord.Forbidden:
-        await interaction.followup.send("I don't have permissions to add users to this channel.")
+        await _send_error_embed(interaction, "I don't have permissions to add users to this channel.")
     except Exception as e:
-        await interaction.followup.send(f"An error occurred: {e}")
+        await _send_error_embed(interaction, f"An error occurred: {e}")
 
 @bot.tree.command(name="removesticketuser", description="Remove a user from the current ticket.")
 @app_commands.describe(user="The user to remove.")
-@commands.has_any_role(STAFF_ROLE_NAME, MODERATOR_ROLE_NAME, ADMIN_STAFF_ROLE_NAME, MANAGER_ROLE_NAME, PI_ROLE_NAME)
+@commands.has_any_role(STAFF_ROLE_NAME, MODERATOR_ROLE_NAME, ADMIN_STAFF_ROLE_NAME, MANAGER_ROLE_ROLE_NAME, PI_ROLE_NAME)
 async def remove_user_from_ticket_slash(interaction: discord.Interaction, user: discord.Member):
     await interaction.response.defer(ephemeral=True) # Acknowledge immediately
 
     if "ticket" not in interaction.channel.name and "screenshare" not in interaction.channel.name:
-        await interaction.followup.send("This command can only be used in a ticket or screenshare channel.")
+        await _send_error_embed(interaction, "This command can only be used in a ticket or screenshare channel.")
         return
 
     try:
         await interaction.channel.set_permissions(user, read_messages=False, send_messages=False)
-        await interaction.followup.send(f"Removed {user.mention} from this ticket.")
+        confirmation_embed = create_embed(
+            title="User Removed",
+            description=f"Removed {user.mention} from this ticket.",
+            color=discord.Color.orange()
+        )
+        await interaction.followup.send(embed=confirmation_embed)
         await interaction.channel.send(f"{user.mention} has been removed from the ticket by {interaction.user.mention}.")
     except discord.Forbidden:
-        await interaction.followup.send("I don't have permissions to remove users from this channel.")
+        await _send_error_embed(interaction, "I don't have permissions to remove users from this channel.")
     except Exception as e:
-        await interaction.followup.send(f"An error occurred: {e}")
+        await _send_error_embed(interaction, f"An error occurred: {e}")
 
 @bot.tree.command(name="addroletoticket", description="Add a role to the current ticket.")
 @app_commands.describe(role="The role to add.")
-@commands.has_any_role(STAFF_ROLE_NAME, MODERATOR_ROLE_NAME, ADMIN_STAFF_ROLE_NAME, MANAGER_ROLE_NAME, PI_ROLE_NAME)
+@commands.has_any_role(STAFF_ROLE_NAME, MODERATOR_ROLE_NAME, ADMIN_STAFF_ROLE_NAME, MANAGER_ROLE_ROLE_NAME, PI_ROLE_NAME)
 async def add_role_to_ticket_slash(interaction: discord.Interaction, role: discord.Role):
     await interaction.response.defer(ephemeral=True) # Acknowledge immediately
 
     if "ticket" not in interaction.channel.name and "screenshare" not in interaction.channel.name:
-        await interaction.followup.send("This command can only be used in a ticket or screenshare channel.")
+        await _send_error_embed(interaction, "This command can only be used in a ticket or screenshare channel.")
         return
 
     try:
         await interaction.channel.set_permissions(role, read_messages=True, send_messages=True)
-        await interaction.followup.send(f"Added {role.mention} to this ticket.")
+        confirmation_embed = create_embed(
+            title="Role Added",
+            description=f"Added {role.mention} to this ticket.",
+            color=discord.Color.green()
+        )
+        await interaction.followup.send(embed=confirmation_embed)
         await interaction.channel.send(f"{role.mention} has been added to the ticket by {interaction.user.mention}.")
     except discord.Forbidden:
-        await interaction.followup.send("I don't have permissions to add roles to this channel.")
+        await _send_error_embed(interaction, "I don't have permissions to add roles to this channel.")
     except Exception as e:
-        await interaction.followup.send(f"An error occurred: {e}")
+        await _send_error_embed(interaction, f"An error occurred: {e}")
 
 @bot.tree.command(name="removeroleticket", description="Remove a role from the current ticket.")
 @app_commands.describe(role="The role to remove.")
-@commands.has_any_role(STAFF_ROLE_NAME, MODERATOR_ROLE_NAME, ADMIN_STAFF_ROLE_NAME, MANAGER_ROLE_NAME, PI_ROLE_NAME)
+@commands.has_any_role(STAFF_ROLE_NAME, MODERATOR_ROLE_NAME, ADMIN_STAFF_ROLE_NAME, MANAGER_ROLE_ROLE_NAME, PI_ROLE_NAME)
 async def remove_role_from_ticket_slash(interaction: discord.Interaction, role: discord.Role):
     await interaction.response.defer(ephemeral=True) # Acknowledge immediately
 
     if "ticket" not in interaction.channel.name and "screenshare" not in interaction.channel.name:
-        await interaction.followup.send("This command can only be used in a ticket or screenshare channel.")
+        await _send_error_embed(interaction, "This command can only be used in a ticket or screenshare channel.")
         return
 
     try:
         await interaction.channel.set_permissions(role, overwrite=None) # Reset to default permissions
-        await interaction.followup.send(f"Removed {role.mention} from this ticket.")
+        confirmation_embed = create_embed(
+            title="Role Removed",
+            description=f"Removed {role.mention} from this ticket.",
+            color=discord.Color.orange()
+        )
+        await interaction.followup.send(embed=confirmation_embed)
         await interaction.channel.send(f"{role.mention} has been removed from the ticket by {interaction.user.mention}.")
     except discord.Forbidden:
-        await interaction.followup.send("I don't have permissions to remove roles from this channel.")
+        await _send_error_embed(interaction, "I don't have permissions to remove roles from this channel.")
     except Exception as e:
-        await interaction.followup.send(f"An error occurred: {e}")
+        await _send_error_embed(interaction, f"An error occurred: {e}")
 
 
 # Main bot run
 if __name__ == "__main__":
     bot.run(DISCORD_BOT_TOKEN)
-
