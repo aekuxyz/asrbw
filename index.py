@@ -1,4 +1,4 @@
-import discord
+    import discord
 from discord.ext import commands, tasks
 from discord.utils import get
 from typing import Union, Optional
@@ -72,6 +72,47 @@ async def fetch_config():
                 try: bot.config[row[0]] = int(row[1])
                 except (ValueError, TypeError): bot.config[row[0]] = row[1]
     logger.info("Configuration loaded from database.")
+
+async def update_elo_roles(member: discord.Member):
+    """Centralized function to update a member's rank role and nickname based on their current ELO."""
+    if not member: return
+
+    async with bot.db_pool.acquire() as conn:
+        async with conn.cursor() as cursor:
+            await cursor.execute("SELECT elo, minecraft_ign FROM players WHERE discord_id = %s", (member.id,))
+            data = await cursor.fetchone()
+            if not data: return
+            
+            current_elo, ign = data
+            if not ign: return # Don't update if not fully registered
+
+    new_rank_name, _ = get_rank_from_elo(current_elo)
+    
+    # Get all rank role objects from the guild
+    rank_roles = {}
+    for rank in ELO_CONFIG.keys():
+        role_id = bot.config.get(f"{rank.lower()}_role_id")
+        if role_id:
+            role = get(member.guild.roles, id=role_id)
+            if role: rank_roles[rank] = role
+    
+    new_role = rank_roles.get(new_rank_name)
+    roles_to_remove = [role for rank, role in rank_roles.items() if rank != new_rank_name and role in member.roles]
+
+    try:
+        if roles_to_remove:
+            await member.remove_roles(*roles_to_remove, reason="ELO rank update")
+        if new_role and new_role not in member.roles:
+            await member.add_roles(new_role, reason="ELO rank update")
+        
+        # Update nickname
+        await member.edit(nick=f"[{current_elo}] {ign}")
+
+    except discord.Forbidden:
+        logger.warning(f"Failed to update roles/nickname for {member.display_name} due to permissions.")
+    except Exception as e:
+        logger.error(f"Error updating roles for {member.id}: {e}")
+
 
 class PaginatorView(discord.ui.View):
     def __init__(self, embeds):
@@ -309,6 +350,8 @@ async def check_strike_polls():
 @tasks.loop(hours=24)
 async def check_elo_decay():
     await bot.wait_until_ready()
+    guild = get(bot.guilds, id=bot.config.get('guild_id'))
+    if not guild: return
     four_days_ago = datetime.utcnow() - timedelta(days=4)
     async with bot.db_pool.acquire() as conn:
         async with conn.cursor() as cursor:
@@ -317,6 +360,8 @@ async def check_elo_decay():
             for player_id, current_elo in inactive_players:
                 decayed_elo = max(ELO_CONFIG['Topaz']['range'][0], current_elo - 60)
                 await cursor.execute("UPDATE players SET elo = %s WHERE discord_id = %s", (decayed_elo, player_id))
+                member = guild.get_member(player_id)
+                await update_elo_roles(member)
 
 @tasks.loop(seconds=60)
 async def check_moderation_expirations():
@@ -448,12 +493,8 @@ async def force_register(ctx, member: discord.Member, ign: str):
     async with bot.db_pool.acquire() as conn:
         async with conn.cursor() as cursor:
             await cursor.execute("INSERT INTO players (discord_id, minecraft_ign, elo) VALUES (%s, %s, 0) ON DUPLICATE KEY UPDATE minecraft_ign=VALUES(minecraft_ign)", (member.id, ign))
-            await cursor.execute("SELECT elo FROM players WHERE discord_id = %s", (member.id,))
-            current_elo = (await cursor.fetchone() or [0])[0]
-    try:
-        await member.edit(nick=f"[{current_elo}] {ign}")
-        if role_id := bot.config.get('registered_role_id'): await member.add_roles(get(ctx.guild.roles, id=role_id))
-    except Exception: pass
+    if role_id := bot.config.get('registered_role_id'): await member.add_roles(get(ctx.guild.roles, id=role_id))
+    await update_elo_roles(member)
     await ctx.send(embed=create_embed("Registered", f"{member.mention} is now `{ign}`."))
 
 async def issue_moderation(ctx: commands.Context, member: discord.Member, action: str, role: discord.Role, reason: str, duration: Optional[timedelta] = None):
@@ -527,6 +568,7 @@ async def strike_user_internal(guild, member: discord.Member, reason: str, moder
     embed = create_embed("User Striked", f"**Member:** {member.mention}\n**Action:** Strike\n**ELO Change:** -40", discord.Color.red())
     embed.add_field(name="Reason", value=reason).set_footer(text=f"Striked by {mod_name} | Strike ID: {strike_id}")
     if log_channel: await log_channel.send(embed=embed)
+    await update_elo_roles(member)
 
 @bot.hybrid_command(name="strike", description="Issue a strike to a user.")
 @is_staff()
@@ -542,9 +584,11 @@ async def strikeremove(ctx, strike_id: int, *, reason: str):
             await cursor.execute("SELECT target_id FROM moderation_logs WHERE log_id = %s AND action_type = 'strike'", (strike_id,))
             res = await cursor.fetchone()
             if not res: return await ctx.send(embed=create_embed("Error", "Strike ID not found.", discord.Color.red()), ephemeral=True)
+            target_id = res[0]
             await cursor.execute("DELETE FROM moderation_logs WHERE log_id = %s", (strike_id,))
-            await cursor.execute("UPDATE players SET elo = elo + 40 WHERE discord_id = %s", (res[0],))
+            await cursor.execute("UPDATE players SET elo = elo + 40 WHERE discord_id = %s", (target_id,))
     await ctx.send(embed=create_embed("Strike Removed", f"Strike ID `{strike_id}` has been removed. Reason: {reason}", discord.Color.green()))
+    await update_elo_roles(get(ctx.guild.members, id=target_id))
 
 @bot.hybrid_command(aliases=["sr"], name="strikerequest", description="Request a community vote to strike a user.")
 @in_strike_request_channel()
@@ -673,6 +717,7 @@ async def admin_setpartysize(ctx, size: int):
 async def wins(ctx, member: discord.Member, amount: int):
     async with bot.db_pool.acquire() as conn:
         async with conn.cursor() as cursor: await cursor.execute("UPDATE players SET wins = wins + %s, win_streak = win_streak + %s, elo = elo + %s WHERE discord_id = %s", (amount, amount, 20 * amount, member.id))
+    await update_elo_roles(member)
     await ctx.send(f"Added {amount} wins to {member.mention}.")
     
 @bot.hybrid_command(name="losses", description="Add losses to a user.")
@@ -680,6 +725,7 @@ async def wins(ctx, member: discord.Member, amount: int):
 async def losses(ctx, member: discord.Member, amount: int):
     async with bot.db_pool.acquire() as conn:
         async with conn.cursor() as cursor: await cursor.execute("UPDATE players SET losses = losses + %s, win_streak = 0, elo = elo - %s WHERE discord_id = %s", (amount, 10 * amount, member.id))
+    await update_elo_roles(member)
     await ctx.send(f"Added {amount} losses to {member.mention}.")
 
 @bot.hybrid_command(name="elochange", description="Change a user's ELO by a specific amount.")
@@ -687,6 +733,7 @@ async def losses(ctx, member: discord.Member, amount: int):
 async def elochange(ctx, member: discord.Member, amount: int):
     async with bot.db_pool.acquire() as conn:
         async with conn.cursor() as cursor: await cursor.execute("UPDATE players SET elo = elo + %s WHERE discord_id = %s", (amount, member.id))
+    await update_elo_roles(member)
     await ctx.send(f"Changed {member.mention}'s ELO by {amount}.")
 
 @bot.hybrid_command(name="elo", description="Set a user's ELO to a specific value.")
@@ -694,6 +741,7 @@ async def elochange(ctx, member: discord.Member, amount: int):
 async def elo(ctx, member: discord.Member, amount: int):
     async with bot.db_pool.acquire() as conn:
         async with conn.cursor() as cursor: await cursor.execute("UPDATE players SET elo = %s WHERE discord_id = %s", (amount, member.id))
+    await update_elo_roles(member)
     await ctx.send(f"Set {member.mention}'s ELO to {amount}.")
 
 @bot.hybrid_command(name="mvps", description="Add MVPs to a user.")
@@ -746,6 +794,8 @@ async def score(ctx, game_id: int, winning_team_num: int, mvp: discord.Member):
                     elo_change += rank_data['loss']
                     await cursor.execute("UPDATE players SET losses = losses + 1, win_streak = 0, elo = elo + %s, last_game_played_at = NOW() WHERE discord_id = %s", (elo_change, p_id))
                 elo_changes.append((elo_change, game_id, p_id))
+                await update_elo_roles(get(ctx.guild.members, id=p_id))
+
             await cursor.executemany("UPDATE game_participants SET elo_change = %s WHERE game_id = %s AND player_id = %s", elo_changes)
             await cursor.execute("UPDATE games SET is_scored = TRUE, is_undone = FALSE, winning_team = %s, mvp_discord_id = %s, scored_at = NOW(), scored_by_id = %s WHERE game_id = %s", (winning_team_num, mvp.id, ctx.author.id, game_id))
     results_channel = get(ctx.guild.channels, id=bot.config.get('games_results_channel_id'))
@@ -772,6 +822,7 @@ async def undo(ctx, game_id: int, *, reason: str):
                     await cursor.execute("UPDATE players SET wins = wins - 1, win_streak = win_streak - 1, elo = elo - %s WHERE discord_id = %s", (elo_change, p_id))
                 else:
                     await cursor.execute("UPDATE players SET losses = losses - 1, elo = elo - %s WHERE discord_id = %s", (elo_change, p_id))
+                await update_elo_roles(get(ctx.guild.members, id=p_id))
             await cursor.execute("UPDATE games SET is_scored = FALSE, is_undone = TRUE WHERE game_id = %s", (game_id,))
     await ctx.send(embed=create_embed("Game Undone", f"Game `{game_id}` has been undone. Reason: {reason}", discord.Color.orange()))
 
