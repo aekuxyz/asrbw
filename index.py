@@ -315,8 +315,9 @@ async def check_elo_decay():
 @tasks.loop(seconds=60)
 async def check_moderation_expirations():
     await bot.wait_until_ready(); guild = bot.get_guild(bot.config.get('guild_id'));
-    if not guild: return; banned_role = guild.get_role(bot.config.get('banned_role_id')); muted_role = guild.get_role(bot.config.get('muted_role_id'))
-    log_channel = guild.get_channel(bot.config.get('log_channel_id'));
+    if not guild: return
+    banned_role = guild.get_role(bot.config.get('banned_role_id'))
+    muted_role = guild.get_role(bot.config.get('muted_role_id'))
     async with bot.db_pool.acquire() as conn:
         async with conn.cursor() as cursor:
             await cursor.execute("SELECT log_id, target_id, action_type FROM moderation_logs WHERE is_active = TRUE AND expires_at IS NOT NULL AND expires_at <= NOW()")
@@ -325,11 +326,19 @@ async def check_moderation_expirations():
                 member = guild.get_member(target_id)
                 if not member: continue
                 role_to_remove = None
-                if action_type == 'ban' and banned_role: role_to_remove = banned_role
-                if action_type == 'mute' and muted_role: role_to_remove = muted_role
+                log_channel = None
+                if action_type == 'ban' and banned_role:
+                    role_to_remove = banned_role
+                    log_channel = get(guild.channels, id=bot.config.get('ban_log_channel_id'))
+                if action_type == 'mute' and muted_role:
+                    role_to_remove = muted_role
+                    log_channel = get(guild.channels, id=bot.config.get('mute_log_channel_id'))
+
                 if role_to_remove and role_to_remove in member.roles:
                     await member.remove_roles(role_to_remove, reason="Punishment expired.")
-                    if log_channel: await log_channel.send(embed=create_embed(f"{action_type.capitalize()} Expired", f"{member.mention}'s {action_type} has expired.", discord.Color.green()))
+                    if log_channel:
+                        embed = create_embed(f"{action_type.capitalize()} Expired", f"{member.mention}'s {action_type} has expired.", discord.Color.green())
+                        await log_channel.send(embed=embed)
                 await cursor.execute("UPDATE moderation_logs SET is_active = FALSE WHERE log_id = %s", (log_id,))
 
 @tasks.loop(seconds=20)
@@ -358,8 +367,11 @@ async def on_message(message):
 @bot.event
 async def on_command_error(ctx, error):
     emoji = bot.config.get('processing_emoji', '✅')
-    if ctx.prefix == bot.command_prefix:
-        await ctx.message.remove_reaction(emoji, bot.user)
+    if ctx.prefix == bot.command_prefix and ctx.message:
+        try:
+            await ctx.message.remove_reaction(emoji, bot.user)
+        except discord.Forbidden:
+            pass # Can't remove reactions
     if isinstance(error, commands.CommandNotFound): return
     elif isinstance(error, commands.CheckFailure): await ctx.send(embed=create_embed("Permission Denied", "You do not have the required permissions.", discord.Color.red()), ephemeral=True)
     elif isinstance(error, commands.MissingRequiredArgument): await ctx.send(embed=create_embed("Missing Argument", f"You're missing: `{error.param.name}`.", discord.Color.orange()), ephemeral=True)
@@ -427,15 +439,21 @@ async def register(ctx, ign: str):
 @is_staff()
 async def force_register(ctx, member: discord.Member, ign: str):
     async with bot.db_pool.acquire() as conn:
-        async with conn.cursor() as cursor: await cursor.execute("INSERT INTO players (discord_id, minecraft_ign, elo) VALUES (%s, %s, 0) ON DUPLICATE KEY UPDATE minecraft_ign=VALUES(minecraft_ign)", (member.id, ign))
+        async with conn.cursor() as cursor:
+            await cursor.execute("INSERT INTO players (discord_id, minecraft_ign, elo) VALUES (%s, %s, 0) ON DUPLICATE KEY UPDATE minecraft_ign=VALUES(minecraft_ign)", (member.id, ign))
+            await cursor.execute("SELECT elo FROM players WHERE discord_id = %s", (member.id,))
+            current_elo = (await cursor.fetchone() or [0])[0]
     try:
-        await member.edit(nick=f"[{await cursor.fetchone() or 0}] {ign}")
+        await member.edit(nick=f"[{current_elo}] {ign}")
         if role_id := bot.config.get('registered_role_id'): await member.add_roles(get(ctx.guild.roles, id=role_id))
     except Exception: pass
     await ctx.send(embed=create_embed("Registered", f"{member.mention} is now `{ign}`."))
 
 async def issue_moderation(ctx: commands.Context, member: discord.Member, action: str, role: discord.Role, reason: str, duration: Optional[timedelta] = None):
-    log_channel = get(ctx.guild.channels, id=bot.config.get('log_channel_id'))
+    log_channel = None
+    if action == "ban": log_channel = get(ctx.guild.channels, id=bot.config.get('ban_log_channel_id'))
+    elif action == "mute": log_channel = get(ctx.guild.channels, id=bot.config.get('mute_log_channel_id'))
+
     if role in member.roles: 
         await ctx.send(embed=create_embed(f"Already {action}ed", f"{member.mention} already has the {role.name} role.", discord.Color.orange()), ephemeral=True)
         return
@@ -467,7 +485,10 @@ async def mute(ctx, member: discord.Member, duration: str, *, reason: str):
     except ValueError as e: await ctx.send(embed=create_embed("Invalid Duration", str(e), discord.Color.red()), ephemeral=True)
 
 async def remove_moderation(ctx, member: discord.Member, action: str, role: discord.Role, reason: str):
-    log_channel = get(ctx.guild.channels, id=bot.config.get('log_channel_id'))
+    log_channel = None
+    if action == "ban": log_channel = get(ctx.guild.channels, id=bot.config.get('ban_log_channel_id'))
+    elif action == "mute": log_channel = get(ctx.guild.channels, id=bot.config.get('mute_log_channel_id'))
+
     if role not in member.roles: await ctx.send(embed=create_embed(f"Not {action}ed", f"{member.mention} does not have the {role.name} role.", discord.Color.orange()), ephemeral=True); return
     await member.remove_roles(role, reason=reason)
     async with bot.db_pool.acquire() as conn:
@@ -490,7 +511,7 @@ async def unmute(ctx, member: discord.Member, *, reason: str = "No reason provid
 
 async def strike_user_internal(guild, member: discord.Member, reason: str, moderator: Union[discord.Member, str]):
     mod_name = moderator.name if isinstance(moderator, discord.Member) else moderator
-    log_channel = get(guild.channels, id=bot.config.get('log_channel_id'))
+    log_channel = get(guild.channels, id=bot.config.get('strike_log_channel_id'))
     async with bot.db_pool.acquire() as conn:
         async with conn.cursor() as cursor:
             mod_id = moderator.id if isinstance(moderator, discord.Member) else bot.user.id
