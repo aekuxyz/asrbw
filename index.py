@@ -1,4 +1,4 @@
-    import discord
+import discord
 from discord.ext import commands, tasks
 from discord.utils import get
 from typing import Union, Optional
@@ -62,6 +62,23 @@ def create_embed(title, description, color=discord.Color.from_rgb(47, 49, 54)):
     embed = discord.Embed(title=title, description=description, color=color)
     embed.set_footer(text="asrbw.fun"); embed.timestamp = datetime.utcnow()
     return embed
+
+def parse_duration(duration_str: str) -> timedelta:
+    """Parses a duration string (e.g., 1d, 5m, 30s) into a timedelta object."""
+    regex = re.compile(r'(\d+)([smhdy])')
+    parts = regex.findall(duration_str.lower())
+    if not parts:
+        raise ValueError("Invalid duration format.")
+    
+    total_seconds = 0
+    for value, unit in parts:
+        value = int(value)
+        if unit == 's': total_seconds += value
+        elif unit == 'm': total_seconds += value * 60
+        elif unit == 'h': total_seconds += value * 3600
+        elif unit == 'd': total_seconds += value * 86400
+        elif unit == 'y': total_seconds += value * 31536000
+    return timedelta(seconds=total_seconds)
 
 async def fetch_config():
     async with bot.db_pool.acquire() as conn:
@@ -406,7 +423,10 @@ async def on_message(message):
     if message.author.bot: return
     if message.content.startswith(bot.command_prefix):
         emoji = bot.config.get('processing_emoji', '✅')
-        await message.add_reaction(emoji)
+        try:
+            await message.add_reaction(emoji)
+        except (discord.HTTPException, discord.Forbidden):
+            pass # Ignore if emoji is invalid or permissions are missing
     await bot.process_commands(message)
 
 @bot.event
@@ -600,12 +620,12 @@ async def strikerequest(ctx, member: discord.Member, reason: str, proof: discord
 
     poll_channel = await category.create_text_channel(f"strike-poll-{member.name}")
     embed = create_embed(f"Strike Request against {member.display_name}", f"**Reason:** {reason}\n\nRequested by: {ctx.author.mention}")
-    embed.set_image(url=proof.url).set_footer(text="Voting ends in 60 minutes.")
+    embed.set_image(url=proof.url).set_footer(text="Voting ends in 60 seconds.")
     msg = await poll_channel.send(embed=embed); await msg.add_reaction("👍"); await msg.add_reaction("👎")
     
     async with bot.db_pool.acquire() as conn:
         async with conn.cursor() as cursor:
-            ends_at = datetime.utcnow() + timedelta(minutes=60)
+            ends_at = datetime.utcnow() + timedelta(seconds=60)
             await cursor.execute("INSERT INTO strike_polls (message_id, channel_id, target_id, requester_id, reason, ends_at) VALUES (%s, %s, %s, %s, %s, %s)", (msg.id, poll_channel.id, member.id, ctx.author.id, reason, ends_at))
     await ctx.send(f"Strike request created in {poll_channel.mention}", ephemeral=True)
 
@@ -616,11 +636,27 @@ async def info(ctx, member: Optional[discord.Member] = None):
         async with conn.cursor() as cursor: await cursor.execute("SELECT minecraft_ign, elo, wins, losses, mvps, win_streak FROM players WHERE discord_id = %s", (member.id,)); data = await cursor.fetchone()
     if not data: return await ctx.send(embed=create_embed("Not Registered", f"{member.mention} is not registered.", discord.Color.orange()))
     ign, elo, wins, losses, mvps, streak = data; wlr = round(wins / losses, 2) if losses > 0 else wins
-    async with aiohttp.ClientSession() as s:
-        async with s.get(f'https://crafatar.com/renders/body/{ign}?overlay') as r:
-            if r.status != 200: return await ctx.send("Could not fetch skin."); skin_data = await r.read()
-    skin = Image.open(io.BytesIO(skin_data)).resize((180, 420), Image.Resampling.LANCZOS)
-    card = Image.new('RGB', (600, 450), color='#2F3136'); card.paste(skin, (20, 15), skin)
+    
+    skin_data = None
+    async with aiohttp.ClientSession() as session:
+        # Try to get user's skin
+        async with session.get(f'https://crafatar.com/renders/body/{ign}?overlay') as resp:
+            if resp.status == 200:
+                skin_data = await resp.read()
+            else:
+                logger.warning(f"Crafatar failed to fetch skin for IGN '{ign}', status: {resp.status}. Trying fallback.")
+                # Try to get default Steve skin as a fallback
+                async with session.get('https://crafatar.com/renders/body/8667ba71-b85a-4004-af54-457a9734eed7?overlay') as fallback_resp:
+                    if fallback_resp.status == 200:
+                        skin_data = await fallback_resp.read()
+                    else:
+                        logger.error("Crafatar fallback also failed. Proceeding without skin.")
+
+    card = Image.new('RGB', (600, 450), color='#2F3136')
+    if skin_data:
+        skin = Image.open(io.BytesIO(skin_data)).resize((180, 420), Image.Resampling.LANCZOS)
+        card.paste(skin, (20, 15), skin)
+
     draw = ImageDraw.Draw(card); font_path = "arial.ttf"
     try: title_f = ImageFont.truetype(font_path, 40); stat_f = ImageFont.truetype(font_path, 28); label_f = ImageFont.truetype(font_path, 22)
     except IOError: title_f=ImageFont.load_default(); stat_f=ImageFont.load_default(); label_f=ImageFont.load_default()
@@ -700,9 +736,17 @@ async def admin_purgeall(ctx):
     await ctx.send("This is a dangerous command. Type `CONFIRM` to proceed.");
     try: await bot.wait_for('message', timeout=30.0, check=lambda m: m.author == ctx.author and m.channel == ctx.channel and m.content == 'CONFIRM')
     except asyncio.TimeoutError: return await ctx.send("Purge cancelled.")
+    
+    await ctx.send("Resetting all player stats... this may take a moment.")
     async with bot.db_pool.acquire() as conn:
-        async with conn.cursor() as cursor: await cursor.execute("DELETE FROM players")
-    await ctx.send(embed=create_embed("DATABASE PURGED", "All player data has been wiped.", discord.Color.dark_red()))
+        async with conn.cursor() as cursor:
+            await cursor.execute("UPDATE players SET elo = 0, wins = 0, losses = 0, mvps = 0, win_streak = 0")
+    
+    # Update roles and nicks for all members
+    for member in ctx.guild.members:
+        await update_elo_roles(member)
+        
+    await ctx.send(embed=create_embed("STATS PURGED", "All player stats have been reset to 0.", discord.Color.dark_red()))
 
 @admin.command(name="setpartysize", description="Set the default party size for matchmaking.")
 async def admin_setpartysize(ctx, size: int):
@@ -870,11 +914,20 @@ async def close_ticket(ctx, *, reason: str = "No reason provided."):
     is_ss_ticket = ctx.channel.name.startswith('ss-')
     is_normal_ticket = await is_ticket_channel(ctx)
     if not is_ss_ticket and not is_normal_ticket: return await ctx.send("This is not a ticket channel.", ephemeral=True)
+    
     await ctx.send(embed=create_embed("Ticket Closing", "This ticket will be logged and closed in 10 seconds...", discord.Color.orange()))
     transcript = await generate_html_transcript(ctx.channel)
+    
+    # Determine the correct log channel
+    if is_ss_ticket:
+        log_channel_id = bot.config.get('screenshare_log_channel_id')
+    else:
+        log_channel_id = bot.config.get('ticket_log_channel_id')
+        
     await asyncio.sleep(10)
     await ctx.channel.delete(reason=f"Closed by {ctx.author} for: {reason}")
-    log_channel = get(ctx.guild.channels, id=bot.config.get('ticket_log_channel_id'))
+    
+    log_channel = get(ctx.guild.channels, id=log_channel_id)
     if log_channel:
         embed = create_embed("Ticket Closed", f"Ticket `#{ctx.channel.name}` was closed by {ctx.author.mention}.")
         embed.add_field(name="Reason", value=reason)
@@ -900,6 +953,18 @@ async def ss(ctx, target: discord.Member, reason: str, proof: discord.Attachment
 @bot.hybrid_command(name="ssclose", description="Close a screenshare ticket.")
 @is_staff()
 async def ss_close(ctx, *, reason: str = "No reason provided."):
+    # Find the target user from channel permissions to remove the role
+    target_user = None
+    for overwrite in ctx.channel.overwrites:
+        if isinstance(overwrite, discord.Member) and overwrite != ctx.author and not overwrite.bot:
+            target_user = overwrite
+            break
+
+    if target_user:
+        frozen_role = get(ctx.guild.roles, id=bot.config.get('frozen_role_id'))
+        if frozen_role and frozen_role in target_user.roles:
+            await target_user.remove_roles(frozen_role, reason=f"SS ticket closed by {ctx.author}")
+            
     await close_ticket.callback(ctx, reason=reason)
 
 @bot.hybrid_command(name="poll", description="Start a new PPP poll for a user.")
