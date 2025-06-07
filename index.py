@@ -2069,7 +2069,7 @@ async def poll_create_subcommand(ctx: commands.Context, kind: str, member: disco
         embed.add_field(name="Target User", value=member.mention, inline=True)
 
     message = await poll_channel.send(embed=embed)
-    await message.add_reaction('👍')
+    await message.add_reaction('�')
     await message.add_reaction('👎')
 
     async with bot.db_pool.acquire() as conn:
@@ -3376,3 +3376,4 @@ if __name__ == '__main__':
     # await fetch_last_game_num() # Requires running async outside of bot.run
 
     bot.run(DISCORD_BOT_TOKEN)
+�
