@@ -34,7 +34,7 @@ DB_HOST = os.getenv("DB_HOST"); DB_USER = os.getenv("DB_USER")
 DB_PASSWORD = os.getenv("DB_PASSWORD"); DB_NAME = os.getenv("DB_NAME")
 DB_PORT = int(os.getenv("DB_PORT", 3306))
 
-# Bot Init
+# Bot Init - Using Hybrid Commands requires a command_prefix, even if you mainly use slash commands.
 intents = discord.Intents.default()
 intents.members = True; intents.message_content = True
 intents.voice_states = True; intents.reactions = True
@@ -126,15 +126,12 @@ class GameManager:
         
         sorted_players = [get(self.text_channel.guild.members, id=pid) for pid, elo in sorted_players_data]
         
-        # Distribute players using a snake draft for better balance
         team1_elo, team2_elo = 0, 0
         for i, player in enumerate(sorted_players):
             if team1_elo <= team2_elo:
-                self.team1.append(player)
-                team1_elo += sorted_players_data[i][1] # Add player's elo
+                self.team1.append(player); team1_elo += sorted_players_data[i][1]
             else:
-                self.team2.append(player)
-                team2_elo += sorted_players_data[i][1]
+                self.team2.append(player); team2_elo += sorted_players_data[i][1]
         
         await self.finalize_teams()
     def create_teams_embed(self):
@@ -249,6 +246,14 @@ async def on_ready():
     except Exception as e:
         logger.error(f"DB connection failed: {e}"); await bot.close(); return
     await bot.change_presence(activity=discord.Activity(type=discord.ActivityType.listening, name="asrbw.fun"))
+    
+    # Sync slash commands with the server
+    guild_obj = get(bot.guilds, id=bot.config.get('guild_id'))
+    if guild_obj:
+        bot.tree.copy_global_to(guild=guild_obj)
+        await bot.tree.sync(guild=guild_obj)
+        logger.info(f"Synced slash commands for guild: {guild_obj.name}")
+
     check_moderation_expirations.start(); check_ss_expirations.start(); check_elo_decay.start(); check_strike_polls.start()
     logger.info("Bot ready, tasks started.")
 
@@ -345,17 +350,21 @@ async def check_ss_expirations():
 @bot.event
 async def on_message(message):
     if message.author.bot: return
-    if message.content.startswith(bot.command_prefix): await message.add_reaction("✅")
+    if message.content.startswith(bot.command_prefix):
+        emoji = bot.config.get('processing_emoji', '✅')
+        await message.add_reaction(emoji)
     await bot.process_commands(message)
 
 @bot.event
 async def on_command_error(ctx, error):
-    await ctx.message.remove_reaction("✅", bot.user)
+    emoji = bot.config.get('processing_emoji', '✅')
+    if ctx.prefix == bot.command_prefix:
+        await ctx.message.remove_reaction(emoji, bot.user)
     if isinstance(error, commands.CommandNotFound): return
-    elif isinstance(error, commands.CheckFailure): await ctx.send(embed=create_embed("Permission Denied", "You do not have the required permissions.", discord.Color.red()))
-    elif isinstance(error, commands.MissingRequiredArgument): await ctx.send(embed=create_embed("Missing Argument", f"You're missing: `{error.param.name}`.", discord.Color.orange()))
-    elif isinstance(error, commands.CommandError) and "is a required argument that is missing" in str(error): await ctx.send(embed=create_embed("Missing Attachment", "You must attach an image as proof.", discord.Color.orange()))
-    else: logger.error(f"Error in command '{ctx.command}': {error}"); await ctx.send(embed=create_embed("Error", "An unexpected error occurred.", discord.Color.dark_red()))
+    elif isinstance(error, commands.CheckFailure): await ctx.send(embed=create_embed("Permission Denied", "You do not have the required permissions.", discord.Color.red()), ephemeral=True)
+    elif isinstance(error, commands.MissingRequiredArgument): await ctx.send(embed=create_embed("Missing Argument", f"You're missing: `{error.param.name}`.", discord.Color.orange()), ephemeral=True)
+    elif isinstance(error, commands.CommandError) and "is a required argument that is missing" in str(error): await ctx.send(embed=create_embed("Missing Attachment", "You must attach an image as proof.", discord.Color.orange()), ephemeral=True)
+    else: logger.error(f"Error in command '{ctx.command}': {error}"); await ctx.send(embed=create_embed("Error", "An unexpected error occurred.", discord.Color.dark_red()), ephemeral=True)
 
 @bot.event
 async def on_voice_state_update(member, before, after):
@@ -381,8 +390,6 @@ async def on_voice_state_update(member, before, after):
 @bot.event
 async def on_raw_reaction_add(payload):
     if payload.user_id == bot.user.id: return
-    
-    # PPP Polls Reaction Handling
     async with bot.db_pool.acquire() as conn:
         async with conn.cursor() as cursor:
             await cursor.execute("SELECT poll_id FROM ppp_polls WHERE message_id = %s AND is_open = TRUE", (payload.message_id,))
@@ -394,8 +401,6 @@ async def on_raw_reaction_add(payload):
                 vote_type = 'upvote' if str(payload.emoji) == '👍' else 'downvote'
                 await cursor.execute("DELETE FROM ppp_poll_votes WHERE poll_id = %s AND voter_id = %s", (poll_res[0], payload.user_id))
                 await cursor.execute("INSERT INTO ppp_poll_votes (poll_id, voter_id, vote_type) VALUES (%s, %s, %s)", (poll_res[0], payload.user_id, vote_type))
-    
-    # Strike Polls Reaction Handling (to prevent double voting)
     async with bot.db_pool.acquire() as conn:
         async with conn.cursor() as cursor:
             await cursor.execute("SELECT 1 FROM strike_polls WHERE message_id = %s AND is_active = TRUE", (payload.message_id,))
@@ -407,60 +412,63 @@ async def on_raw_reaction_add(payload):
             if user := bot.get_user(payload.user_id): await reaction.remove(user)
 
 # --- ALL COMMANDS ---
-@bot.command(name="register")
+@bot.hybrid_command(name="register", description="Register your Minecraft account.")
+@discord.app_commands.describe(ign="Your in-game name.")
 async def register(ctx, ign: str):
     code = ''.join(random.choices(string.ascii_uppercase+string.digits, k=6))
     try:
         async with bot.db_pool.acquire() as conn:
             async with conn.cursor() as cursor: await cursor.execute("INSERT INTO players (discord_id, minecraft_ign, registration_code) VALUES (%s, %s, %s) ON DUPLICATE KEY UPDATE minecraft_ign=VALUES(minecraft_ign), registration_code=VALUES(registration_code)", (ctx.author.id, ign, code))
         await ctx.author.send(embed=create_embed("Registration", f"Log in to `play.asrbw.fun` and type `/link {code}`"))
-        await ctx.send("DM sent with instructions.")
-    except discord.Forbidden: await ctx.send("Could not DM you.")
+        await ctx.send("DM sent with instructions.", ephemeral=True)
+    except discord.Forbidden: await ctx.send("Could not DM you. Please enable DMs from server members.", ephemeral=True)
 
-@bot.command(name="forceregister")
+@bot.hybrid_command(name="forceregister", description="Manually register a user.")
 @is_staff()
 async def force_register(ctx, member: discord.Member, ign: str):
     async with bot.db_pool.acquire() as conn:
         async with conn.cursor() as cursor: await cursor.execute("INSERT INTO players (discord_id, minecraft_ign, elo) VALUES (%s, %s, 0) ON DUPLICATE KEY UPDATE minecraft_ign=VALUES(minecraft_ign)", (member.id, ign))
     try:
-        await member.edit(nick=f"[0] {ign}")
+        await member.edit(nick=f"[{await cursor.fetchone() or 0}] {ign}")
         if role_id := bot.config.get('registered_role_id'): await member.add_roles(get(ctx.guild.roles, id=role_id))
     except Exception: pass
     await ctx.send(embed=create_embed("Registered", f"{member.mention} is now `{ign}`."))
 
-async def issue_moderation(ctx, member: discord.Member, action: str, role: discord.Role, reason: str, duration: timedelta = None):
+async def issue_moderation(ctx: commands.Context, member: discord.Member, action: str, role: discord.Role, reason: str, duration: Optional[timedelta] = None):
     log_channel = get(ctx.guild.channels, id=bot.config.get('log_channel_id'))
-    if role in member.roles: await ctx.send(embed=create_embed(f"Already {action}ed", f"{member.mention} already has the {role.name} role.", discord.Color.orange())); return
+    if role in member.roles: 
+        await ctx.send(embed=create_embed(f"Already {action}ed", f"{member.mention} already has the {role.name} role.", discord.Color.orange()), ephemeral=True)
+        return
     await member.add_roles(role, reason=reason)
     expires_at = datetime.utcnow() + duration if duration else None
     async with bot.db_pool.acquire() as conn:
         async with conn.cursor() as cursor:
             await cursor.execute("INSERT INTO moderation_logs (target_id, moderator_id, action_type, reason, expires_at) VALUES (%s, %s, %s, %s, %s)", (member.id, ctx.author.id, action, reason, expires_at))
-    duration_str = f" for {str(duration)}" if duration else ""
-    embed = create_embed(f"User {action.capitalize()}ed", f"{member.mention} has been {action}ed{duration_str}.", discord.Color.red())
-    embed.add_field(name="Reason", value=reason, inline=False)
+    duration_str = f" for {str(duration)}" if duration else " permanently"
+    embed = create_embed(f"User {action.capitalize()}ed", f"**Member:** {member.mention}\n**Action:** {action.capitalize()}{duration_str}", discord.Color.red())
+    embed.add_field(name="Reason", value=reason, inline=False).set_footer(text=f"Moderator: {ctx.author.display_name}")
     await ctx.send(embed=embed);
-    if log_channel: embed.title = f"Log: User {action.capitalize()}ed"; await log_channel.send(embed=embed)
+    if log_channel: await log_channel.send(embed=embed)
 
-@bot.command(name="ban")
+@bot.hybrid_command(name="ban", description="Ban a user.")
 @is_staff()
 async def ban(ctx, member: discord.Member, duration: str, *, reason: str):
     role = get(ctx.guild.roles, id=bot.config.get('banned_role_id'))
-    if not role: return await ctx.send(embed=create_embed("Error", "Banned role not configured.", discord.Color.red()))
+    if not role: return await ctx.send(embed=create_embed("Error", "Banned role not configured.", discord.Color.red()), ephemeral=True)
     try: await issue_moderation(ctx, member, "ban", role, reason, parse_duration(duration))
-    except ValueError as e: await ctx.send(embed=create_embed("Invalid Duration", str(e), discord.Color.red()))
+    except ValueError as e: await ctx.send(embed=create_embed("Invalid Duration", str(e), discord.Color.red()), ephemeral=True)
 
-@bot.command(name="mute")
+@bot.hybrid_command(name="mute", description="Mute a user.")
 @is_staff()
 async def mute(ctx, member: discord.Member, duration: str, *, reason: str):
     role = get(ctx.guild.roles, id=bot.config.get('muted_role_id'))
-    if not role: return await ctx.send(embed=create_embed("Error", "Muted role not configured.", discord.Color.red()))
+    if not role: return await ctx.send(embed=create_embed("Error", "Muted role not configured.", discord.Color.red()), ephemeral=True)
     try: await issue_moderation(ctx, member, "mute", role, reason, parse_duration(duration))
-    except ValueError as e: await ctx.send(embed=create_embed("Invalid Duration", str(e), discord.Color.red()))
+    except ValueError as e: await ctx.send(embed=create_embed("Invalid Duration", str(e), discord.Color.red()), ephemeral=True)
 
 async def remove_moderation(ctx, member: discord.Member, action: str, role: discord.Role, reason: str):
     log_channel = get(ctx.guild.channels, id=bot.config.get('log_channel_id'))
-    if role not in member.roles: await ctx.send(embed=create_embed(f"Not {action}ed", f"{member.mention} does not have the {role.name} role.", discord.Color.orange())); return
+    if role not in member.roles: await ctx.send(embed=create_embed(f"Not {action}ed", f"{member.mention} does not have the {role.name} role.", discord.Color.orange()), ephemeral=True); return
     await member.remove_roles(role, reason=reason)
     async with bot.db_pool.acquire() as conn:
         async with conn.cursor() as cursor:
@@ -468,14 +476,14 @@ async def remove_moderation(ctx, member: discord.Member, action: str, role: disc
     embed = create_embed(f"User Un{action}ed", f"{member.mention} has been un{action}ed.", discord.Color.green())
     embed.add_field(name="Reason", value=reason, inline=False)
     await ctx.send(embed=embed);
-    if log_channel: embed.title = f"Log: User Un{action}ed"; await log_channel.send(embed=embed)
+    if log_channel: await log_channel.send(embed=embed)
 
-@bot.command(name="unban")
+@bot.hybrid_command(name="unban", description="Unban a user.")
 @is_staff()
 async def unban(ctx, member: discord.Member, *, reason: str = "No reason provided."):
     await remove_moderation(ctx, member, "ban", get(ctx.guild.roles, id=bot.config.get('banned_role_id')), reason)
 
-@bot.command(name="unmute")
+@bot.hybrid_command(name="unmute", description="Unmute a user.")
 @is_staff()
 async def unmute(ctx, member: discord.Member, *, reason: str = "No reason provided."):
     await remove_moderation(ctx, member, "mute", get(ctx.guild.roles, id=bot.config.get('muted_role_id')), reason)
@@ -492,29 +500,30 @@ async def strike_user_internal(guild, member: discord.Member, reason: str, moder
     embed.add_field(name="Reason", value=reason).set_footer(text=f"Striked by {mod_name}")
     if log_channel: await log_channel.send(embed=embed)
 
-@bot.command(name="strike")
+@bot.hybrid_command(name="strike", description="Issue a strike to a user.")
 @is_staff()
 async def strike(ctx, member: discord.Member, *, reason: str):
     await strike_user_internal(ctx.guild, member, reason, ctx.author)
-    await ctx.send(f"{member.mention} has been striked.")
+    await ctx.send(f"{member.mention} has been striked.", ephemeral=True)
 
-@bot.command(aliases=["srem"])
+@bot.hybrid_command(aliases=["srem"], name="strikeremove", description="Remove a strike by its ID.")
 @is_staff()
 async def strikeremove(ctx, strike_id: int, *, reason: str):
     async with bot.db_pool.acquire() as conn:
         async with conn.cursor() as cursor:
             await cursor.execute("SELECT target_id FROM moderation_logs WHERE log_id = %s AND action_type = 'strike'", (strike_id,))
             res = await cursor.fetchone()
-            if not res: return await ctx.send(embed=create_embed("Error", "Strike ID not found.", discord.Color.red()))
+            if not res: return await ctx.send(embed=create_embed("Error", "Strike ID not found.", discord.Color.red()), ephemeral=True)
             await cursor.execute("DELETE FROM moderation_logs WHERE log_id = %s", (strike_id,))
             await cursor.execute("UPDATE players SET elo = elo + 40 WHERE discord_id = %s", (res[0],))
     await ctx.send(embed=create_embed("Strike Removed", f"Strike ID `{strike_id}` has been removed. Reason: {reason}", discord.Color.green()))
 
-@bot.command(aliases=["sr"])
-async def strikerequest(ctx, member: discord.Member, reason: str, proof: Optional[discord.Attachment]):
-    if not proof: return await ctx.send("You must attach an image as proof.")
+@bot.hybrid_command(aliases=["sr"], name="strikerequest", description="Request a community vote to strike a user.")
+@discord.app_commands.describe(reason="Reason for the strike request.", proof="Image proof.")
+async def strikerequest(ctx, member: discord.Member, reason: str, proof: discord.Attachment):
+    if not proof: return await ctx.send("You must attach an image as proof.", ephemeral=True)
     channel = get(ctx.guild.channels, id=bot.config.get('strike_request_channel_id'))
-    if not channel: return await ctx.send("Strike request channel not configured.")
+    if not channel: return await ctx.send("Strike request channel not configured.", ephemeral=True)
     embed = create_embed(f"Strike Request against {member.display_name}", f"**Reason:** {reason}\n\nRequested by: {ctx.author.mention}")
     embed.set_image(url=proof.url).set_footer(text="Voting ends in 60 minutes.")
     msg = await channel.send(embed=embed); await msg.add_reaction("👍"); await msg.add_reaction("👎")
@@ -522,10 +531,10 @@ async def strikerequest(ctx, member: discord.Member, reason: str, proof: Optiona
         async with conn.cursor() as cursor:
             ends_at = datetime.utcnow() + timedelta(minutes=60)
             await cursor.execute("INSERT INTO strike_polls (message_id, target_id, requester_id, reason, ends_at) VALUES (%s, %s, %s, %s, %s)", (msg.id, member.id, ctx.author.id, reason, ends_at))
-    await ctx.send(f"Strike request created in {channel.mention}")
+    await ctx.send(f"Strike request created in {channel.mention}", ephemeral=True)
 
-@bot.command(aliases=['i'])
-async def info(ctx, member: discord.Member = None):
+@bot.hybrid_command(aliases=['i'], name="info", description="View a player's stats card.")
+async def info(ctx, member: Optional[discord.Member] = None):
     member = member or ctx.author
     async with bot.db_pool.acquire() as conn:
         async with conn.cursor() as cursor: await cursor.execute("SELECT minecraft_ign, elo, wins, losses, mvps, win_streak FROM players WHERE discord_id = %s", (member.id,)); data = await cursor.fetchone()
@@ -545,7 +554,7 @@ async def info(ctx, member: discord.Member = None):
     buffer = io.BytesIO(); card.save(buffer, 'PNG'); buffer.seek(0)
     await ctx.send(file=discord.File(buffer, f"{ign}_stats.png"))
 
-@bot.command(aliases=['h'])
+@bot.hybrid_command(aliases=['h'], name="history", description="View a user's moderation history.")
 @is_staff()
 async def history(ctx, member: discord.Member):
     async with bot.db_pool.acquire() as conn:
@@ -565,7 +574,8 @@ async def history(ctx, member: discord.Member):
         embeds.append(embed)
     await ctx.send(embed=embeds[0], view=PaginatorView(embeds))
 
-@bot.command(aliases=['lb'])
+@bot.hybrid_command(aliases=['lb'], name="leaderboard", description="View leaderboards for different stats.")
+@discord.app_commands.describe(category="The leaderboard category to view.")
 async def leaderboard(ctx, category: str = "elo"):
     valid_cats = {'elo': 'elo', 'wins': 'wins', 'losses': 'losses', 'mvps': 'mvps', 'streak': 'win_streak'}
     if category.lower() not in valid_cats: return await ctx.send(f"Invalid category. Use: {', '.join(valid_cats.keys())}")
@@ -588,16 +598,19 @@ async def leaderboard(ctx, category: str = "elo"):
         embeds.append(embed)
     await ctx.send(embed=embeds[0], view=PaginatorView(embeds))
 
-@bot.command(name="purgechat")
+@bot.hybrid_command(name="purgechat", description="Deletes a specified number of messages.")
 @commands.has_permissions(manage_messages=True)
-async def purge_chat(ctx, limit: int = 100): await ctx.channel.purge(limit=limit + 1); await ctx.send(embed=create_embed("Chat Purged", f"{limit} messages deleted.", discord.Color.green()), delete_after=5)
+async def purge_chat(ctx, limit: int = 100):
+    await ctx.defer(ephemeral=True)
+    purged = await ctx.channel.purge(limit=limit)
+    await ctx.send(f"Deleted {len(purged)} messages.", delete_after=5)
 
-@bot.group(name="admin")
+@bot.hybrid_group(name="admin", description="Admin-only commands.")
 @is_admin()
 async def admin(ctx):
-    if ctx.invoked_subcommand is None: await ctx.send(embed=create_embed("Admin Commands", "Use `=admin <subcommand>`.", discord.Color.orange()))
+    if ctx.invoked_subcommand is None: await ctx.send(embed=create_embed("Admin Commands", "Use an admin subcommand.", discord.Color.orange()))
 
-@admin.command(name="partymode")
+@admin.command(name="partymode", description="Toggle party season mode.")
 async def admin_partymode(ctx, state: str):
     state_val = 1 if state.lower() in ['on', '1', 'true'] else 0
     async with bot.db_pool.acquire() as conn:
@@ -606,7 +619,7 @@ async def admin_partymode(ctx, state: str):
     await fetch_config() # Reload config
     await ctx.send(f"Party Season mode has been turned **{'ON' if state_val == 1 else 'OFF'}**.")
 
-@admin.command(name="purgeall")
+@admin.command(name="purgeall", description="DANGER: Wipes all player stats and data.")
 async def admin_purgeall(ctx):
     await ctx.send("This is a dangerous command. Type `CONFIRM` to proceed.");
     try: await bot.wait_for('message', timeout=30.0, check=lambda m: m.author == ctx.author and m.channel == ctx.channel and m.content == 'CONFIRM')
@@ -615,7 +628,7 @@ async def admin_purgeall(ctx):
         async with conn.cursor() as cursor: await cursor.execute("DELETE FROM players")
     await ctx.send(embed=create_embed("DATABASE PURGED", "All player data has been wiped.", discord.Color.dark_red()))
 
-@admin.command(name="setpartysize")
+@admin.command(name="setpartysize", description="Set the default party size for matchmaking.")
 async def admin_setpartysize(ctx, size: int):
     async with bot.db_pool.acquire() as conn:
         async with conn.cursor() as cursor:
@@ -623,35 +636,35 @@ async def admin_setpartysize(ctx, size: int):
     await fetch_config()
     await ctx.send(f"Party size set to `{size}`.")
 
-@bot.command()
+@bot.hybrid_command(name="wins", description="Add wins to a user.")
 @is_admin()
 async def wins(ctx, member: discord.Member, amount: int):
     async with bot.db_pool.acquire() as conn:
         async with conn.cursor() as cursor: await cursor.execute("UPDATE players SET wins = wins + %s, win_streak = win_streak + %s, elo = elo + %s WHERE discord_id = %s", (amount, amount, 20 * amount, member.id))
     await ctx.send(f"Added {amount} wins to {member.mention}.")
     
-@bot.command()
+@bot.hybrid_command(name="losses", description="Add losses to a user.")
 @is_admin()
 async def losses(ctx, member: discord.Member, amount: int):
     async with bot.db_pool.acquire() as conn:
         async with conn.cursor() as cursor: await cursor.execute("UPDATE players SET losses = losses + %s, win_streak = 0, elo = elo - %s WHERE discord_id = %s", (amount, 10 * amount, member.id))
     await ctx.send(f"Added {amount} losses to {member.mention}.")
 
-@bot.command()
+@bot.hybrid_command(name="elochange", description="Change a user's ELO by a specific amount.")
 @is_admin()
 async def elochange(ctx, member: discord.Member, amount: int):
     async with bot.db_pool.acquire() as conn:
         async with conn.cursor() as cursor: await cursor.execute("UPDATE players SET elo = elo + %s WHERE discord_id = %s", (amount, member.id))
     await ctx.send(f"Changed {member.mention}'s ELO by {amount}.")
 
-@bot.command()
+@bot.hybrid_command(name="elo", description="Set a user's ELO to a specific value.")
 @is_admin()
 async def elo(ctx, member: discord.Member, amount: int):
     async with bot.db_pool.acquire() as conn:
         async with conn.cursor() as cursor: await cursor.execute("UPDATE players SET elo = %s WHERE discord_id = %s", (amount, member.id))
     await ctx.send(f"Set {member.mention}'s ELO to {amount}.")
 
-@bot.command()
+@bot.hybrid_command(name="mvps", description="Add MVPs to a user.")
 @is_admin()
 async def mvps(ctx, member: discord.Member, amount: int):
     async with bot.db_pool.acquire() as conn:
@@ -676,15 +689,15 @@ async def create_results_image(team1_players, team2_players, winning_team_num, m
     buffer = io.BytesIO(); card.save(buffer, 'PNG'); buffer.seek(0)
     return buffer
 
-@bot.command()
+@bot.hybrid_command(name="score", description="Score a completed game.")
 @is_admin()
 async def score(ctx, game_id: int, winning_team_num: int, mvp: discord.Member):
     async with bot.db_pool.acquire() as conn:
         async with conn.cursor() as cursor:
             await cursor.execute("SELECT is_scored, is_undone FROM games WHERE game_id = %s", (game_id,))
             status = await cursor.fetchone()
-            if not status or status[0]: return await ctx.send("Game not found or already scored.")
-            if status[1]: return await ctx.send("This game was undone. Use `=rescore` to score it again.")
+            if not status or status[0]: return await ctx.send("Game not found or already scored.", ephemeral=True)
+            if status[1]: return await ctx.send("This game was undone. Use `=rescore` to score it again.", ephemeral=True)
             await cursor.execute("SELECT p.discord_id, p.minecraft_ign, p.elo, gp.team_id FROM players p JOIN game_participants gp ON p.discord_id = gp.player_id WHERE gp.game_id = %s", (game_id,))
             players_data = await cursor.fetchall()
             t1, t2, elo_changes = [], [], []
@@ -709,15 +722,15 @@ async def score(ctx, game_id: int, winning_team_num: int, mvp: discord.Member):
         await results_channel.send(file=discord.File(img_buffer, f"game_{game_id}_results.png"))
     await ctx.send(f"Game {game_id} has been scored.")
 
-@bot.command()
+@bot.hybrid_command(name="undo", description="Undo a scored game, reverting all stats.")
 @is_admin()
 async def undo(ctx, game_id: int, *, reason: str):
     async with bot.db_pool.acquire() as conn:
         async with conn.cursor() as cursor:
             await cursor.execute("SELECT is_scored, is_undone, winning_team, mvp_discord_id FROM games WHERE game_id = %s", (game_id,))
             status = await cursor.fetchone()
-            if not status or not status[0]: return await ctx.send("Game not found or was not scored.")
-            if status[1]: return await ctx.send("This game has already been undone.")
+            if not status or not status[0]: return await ctx.send("Game not found or was not scored.", ephemeral=True)
+            if status[1]: return await ctx.send("This game has already been undone.", ephemeral=True)
             is_scored, is_undone, winning_team, mvp_id = status
             await cursor.execute("SELECT player_id, team_id, elo_change FROM game_participants WHERE game_id = %s", (game_id,))
             participants = await cursor.fetchall()
@@ -730,7 +743,7 @@ async def undo(ctx, game_id: int, *, reason: str):
             await cursor.execute("UPDATE games SET is_scored = FALSE, is_undone = TRUE WHERE game_id = %s", (game_id,))
     await ctx.send(embed=create_embed("Game Undone", f"Game `{game_id}` has been undone. Reason: {reason}", discord.Color.orange()))
 
-@bot.command()
+@bot.hybrid_command(name="rescore", description="Rescore a game with a new outcome.")
 @is_admin()
 async def rescore(ctx, game_id: int, winning_team_num: int, mvp: discord.Member):
     async with bot.db_pool.acquire() as conn:
@@ -741,39 +754,39 @@ async def rescore(ctx, game_id: int, winning_team_num: int, mvp: discord.Member)
     await score.callback(ctx, game_id=game_id, winning_team_num=winning_team_num, mvp=mvp)
     await ctx.send(f"Game `{game_id}` has been rescored.")
 
-@bot.command(name="ticket")
+@bot.hybrid_command(name="ticket", description="Create a new support ticket.")
+@discord.app_commands.describe(ticket_type="The type of ticket to create.")
 async def ticket(ctx, ticket_type: str = None):
     valid_types = ['general', 'appeal', 'store', 'ssappeal']
     if not ticket_type or ticket_type.lower() not in valid_types:
-        return await ctx.send(embed=create_embed("Error", f"Invalid type. Use: `{', '.join(valid_types)}`", discord.Color.red()), delete_after=5)
+        return await ctx.send(embed=create_embed("Error", f"Invalid type. Use: `{', '.join(valid_types)}`", discord.Color.red()), ephemeral=True)
     category = get(ctx.guild.categories, id=bot.config.get('ticket_category_id'))
-    if not category: return await ctx.send(embed=create_embed("Error", "Ticket category not configured.", discord.Color.red()))
+    if not category: return await ctx.send(embed=create_embed("Error", "Ticket category not configured.", discord.Color.red()), ephemeral=True)
     overwrites = {ctx.guild.default_role: discord.PermissionOverwrite(read_messages=False), ctx.author: discord.PermissionOverwrite(read_messages=True, send_messages=True), ctx.guild.me: discord.PermissionOverwrite(read_messages=True)}
     if role := get(ctx.guild.roles, id=bot.config.get('staff_role_id')): overwrites[role] = discord.PermissionOverwrite(read_messages=True)
     channel = await ctx.guild.create_text_channel(f"{ticket_type}-{ctx.author.name}", category=category, overwrites=overwrites)
     async with bot.db_pool.acquire() as conn:
         async with conn.cursor() as cursor: await cursor.execute("INSERT INTO tickets (channel_id, creator_id, type) VALUES (%s, %s, %s)", (channel.id, ctx.author.id, ticket_type.lower()))
     embed = create_embed(f"Ticket Created", f"Welcome, {ctx.author.mention}. Staff will be with you shortly."); await channel.send(embed=embed)
-    await ctx.send(f"Ticket created: {channel.mention}", delete_after=10)
+    await ctx.send(f"Ticket created: {channel.mention}", ephemeral=True, delete_after=10)
 
 async def is_ticket_channel(ctx):
     async with bot.db_pool.acquire() as conn:
         async with conn.cursor() as cursor: await cursor.execute("SELECT 1 FROM tickets WHERE channel_id = %s", (ctx.channel.id,)); return await cursor.fetchone() is not None
 
-@bot.command(name="add")
+@bot.hybrid_command(name="add", description="Add a user or role to a ticket.")
 @commands.check(is_ticket_channel)
 async def add_to_ticket(ctx, target: Union[discord.Member, discord.Role]): await ctx.channel.set_permissions(target, read_messages=True, send_messages=True); await ctx.send(embed=create_embed("Added", f"{target.mention} added to ticket.", discord.Color.green()))
 
-@bot.command(name="remove")
+@bot.hybrid_command(name="remove", description="Remove a user or role from a ticket.")
 @commands.check(is_ticket_channel)
 async def remove_from_ticket(ctx, target: Union[discord.Member, discord.Role]): await ctx.channel.set_permissions(target, overwrite=None); await ctx.send(embed=create_embed("Removed", f"{target.mention} removed from ticket.", discord.Color.orange()))
 
-@bot.command(name="close")
+@bot.hybrid_command(name="close", description="Close the current ticket.")
 async def close_ticket(ctx, *, reason: str = "No reason provided."):
     is_ss_ticket = ctx.channel.name.startswith('ss-')
     is_normal_ticket = await is_ticket_channel(ctx)
-    if not is_ss_ticket and not is_normal_ticket: return await ctx.send("This is not a ticket channel.")
-
+    if not is_ss_ticket and not is_normal_ticket: return await ctx.send("This is not a ticket channel.", ephemeral=True)
     await ctx.send(embed=create_embed("Ticket Closing", "This ticket will be logged and closed in 10 seconds...", discord.Color.orange()))
     transcript = await generate_html_transcript(ctx.channel)
     await asyncio.sleep(10)
@@ -784,13 +797,14 @@ async def close_ticket(ctx, *, reason: str = "No reason provided."):
         embed.add_field(name="Reason", value=reason)
         await log_channel.send(embed=embed, file=discord.File(transcript, f"transcript-{ctx.channel.name}.html"))
 
-@bot.command(name="ss")
+@bot.hybrid_command(name="ss", description="Request a screenshare for a user.")
+@discord.app_commands.describe(target="The user to screenshare.", reason="The reason for the request.", proof="Image proof of cheating.")
 async def ss(ctx, target: discord.Member, reason: str, proof: discord.Attachment):
     frozen_role = get(ctx.guild.roles, id=bot.config.get('frozen_role_id'))
     ss_staff_role = get(ctx.guild.roles, id=bot.config.get('screenshare_staff_role_id'))
     category = get(ctx.guild.categories, id=bot.config.get('screenshare_category_id', bot.config.get('ticket_category_id')))
-    if not all([frozen_role, ss_staff_role, category]): return await ctx.send(embed=create_embed("Error", "Screenshare system is not fully configured.", discord.Color.red()))
-    if frozen_role in target.roles: return await ctx.send(embed=create_embed("Error", f"{target.mention} is already frozen.", discord.Color.orange()))
+    if not all([frozen_role, ss_staff_role, category]): return await ctx.send(embed=create_embed("Error", "Screenshare system is not fully configured.", discord.Color.red()), ephemeral=True)
+    if frozen_role in target.roles: return await ctx.send(embed=create_embed("Error", f"{target.mention} is already frozen.", discord.Color.orange()), ephemeral=True)
     await target.add_roles(frozen_role, reason=f"SS Request by {ctx.author}")
     overwrites = {ctx.guild.default_role: discord.PermissionOverwrite(read_messages=False), ctx.author: discord.PermissionOverwrite(read_messages=True), target: discord.PermissionOverwrite(read_messages=True), ss_staff_role: discord.PermissionOverwrite(read_messages=True)}
     channel = await category.create_text_channel(f"ss-{target.name}", overwrites=overwrites)
@@ -798,27 +812,27 @@ async def ss(ctx, target: discord.Member, reason: str, proof: discord.Attachment
     embed.add_field(name="Reason", value=reason, inline=False).set_image(url=proof.url)
     msg = await channel.send(content=f"{ss_staff_role.mention}, a new SS request requires attention.", embed=embed, view=SSTicketView())
     bot.active_ss_tickets[channel.id] = {'message_id': msg.id, 'target_id': target.id, 'requester_id': ctx.author.id, 'created_at': datetime.utcnow()}
-    await ctx.send(embed=create_embed("Request Created", f"Screenshare ticket has been created in {channel.mention}", discord.Color.green()))
+    await ctx.send(embed=create_embed("Request Created", f"Screenshare ticket has been created in {channel.mention}", discord.Color.green()), ephemeral=True)
 
-@bot.command(name="ssclose")
+@bot.hybrid_command(name="ssclose", description="Close a screenshare ticket.")
 @is_staff()
 async def ss_close(ctx, *, reason: str = "No reason provided."):
     await close_ticket.callback(ctx, reason=reason)
 
-@bot.command()
+@bot.hybrid_command(name="poll", description="Start a new PPP poll for a user.")
 @is_ppp_manager()
 async def poll(ctx, kind: str, member: discord.Member):
     ppp_role = get(ctx.guild.roles, id=bot.config.get('ppp_role_id'))
     voting_channel = get(ctx.guild.channels, id=bot.config.get('ppp_voting_channel_id'))
     if not ppp_role or not voting_channel:
-        return await ctx.send(embed=create_embed("Error", "PPP system not configured.", discord.Color.red()))
+        return await ctx.send(embed=create_embed("Error", "PPP system not configured.", discord.Color.red()), ephemeral=True)
     async with bot.db_pool.acquire() as conn:
         async with conn.cursor() as cursor:
             try:
                 await cursor.execute("INSERT INTO ppp_polls (user_id, kind) VALUES (%s, %s)", (member.id, kind))
                 poll_id = cursor.lastrowid
             except aiomysql.IntegrityError:
-                return await ctx.send(embed=create_embed("Error", "A poll of this kind already exists for this user.", discord.Color.red()))
+                return await ctx.send(embed=create_embed("Error", "A poll of this kind already exists for this user.", discord.Color.red()), ephemeral=True)
     embed = create_embed(f"PPP Poll: {kind.capitalize()}", f"A poll has been started for {member.mention}.")
     embed.add_field(name="Status", value="OPEN ✅")
     msg = await voting_channel.send(embed=embed)
@@ -828,7 +842,7 @@ async def poll(ctx, kind: str, member: discord.Member):
             await cursor.execute("UPDATE ppp_polls SET message_id = %s WHERE poll_id = %s", (msg.id, poll_id))
     await ctx.send(f"Poll for {member.mention} created in {voting_channel.mention}")
 
-@bot.command()
+@bot.hybrid_command(name="pollclose", description="Close an active PPP poll.")
 @is_ppp_manager()
 async def pollclose(ctx, kind: str, member: discord.Member):
     voting_channel = get(ctx.guild.channels, id=bot.config.get('ppp_voting_channel_id'))
@@ -836,7 +850,7 @@ async def pollclose(ctx, kind: str, member: discord.Member):
         async with conn.cursor() as cursor:
             await cursor.execute("SELECT poll_id, message_id FROM ppp_polls WHERE user_id = %s AND kind = %s AND is_open = TRUE", (member.id, kind))
             poll_data = await cursor.fetchone()
-            if not poll_data: return await ctx.send("No active poll of this kind found for the user.")
+            if not poll_data: return await ctx.send("No active poll of this kind found for the user.", ephemeral=True)
             poll_id, msg_id = poll_data
             await cursor.execute("UPDATE ppp_polls SET is_open = FALSE, closed_at = NOW() WHERE poll_id = %s", (poll_id,))
     try:
@@ -851,13 +865,13 @@ async def pollclose(ctx, kind: str, member: discord.Member):
     except discord.NotFound: pass
     await ctx.send(f"Poll for {member.mention} has been closed.")
 
-@bot.command()
+@bot.hybrid_command(name="mypoll", description="Check the status of your PPP poll.")
 async def mypoll(ctx, kind: str):
     async with bot.db_pool.acquire() as conn:
         async with conn.cursor() as cursor:
             await cursor.execute("SELECT is_open, message_id FROM ppp_polls WHERE user_id = %s AND kind = %s", (ctx.author.id, kind))
             poll_data = await cursor.fetchone()
-    if not poll_data: return await ctx.send("You do not have a poll of this kind.")
+    if not poll_data: return await ctx.send("You do not have a poll of this kind.", ephemeral=True)
     is_open, msg_id = poll_data
     status = "OPEN ✅" if is_open else "CLOSED ❌"
     await ctx.send(f"Your `{kind}` poll is currently **{status}**. Link: https://discord.com/channels/{ctx.guild.id}/{bot.config.get('ppp_voting_channel_id')}/{msg_id}")
