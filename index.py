@@ -417,7 +417,6 @@ async def on_raw_reaction_add(payload):
                 premium_role = get(guild.roles, id=bot.config.get('premium_role_id'))
                 required_roles = [r for r in [pups_role, pugs_role, premium_role] if r is not None]
                 if not voter or not any(role in voter.roles for role in required_roles): return
-                
                 vote_type = 'upvote' if str(payload.emoji) == '👍' else 'downvote'
                 await cursor.execute("DELETE FROM ppp_poll_votes WHERE poll_id = %s AND voter_id = %s", (poll_res[0], payload.user_id))
                 await cursor.execute("INSERT INTO ppp_poll_votes (poll_id, voter_id, vote_type) VALUES (%s, %s, %s)", (poll_res[0], payload.user_id, vote_type))
@@ -911,6 +910,58 @@ async def mypoll(ctx, kind: str):
     is_open, msg_id = poll_data
     status = "OPEN ✅" if is_open else "CLOSED ❌"
     await ctx.send(f"Your `{kind}` poll is currently **{status}**. Link: https://discord.com/channels/{ctx.guild.id}/{bot.config.get('ppp_voting_channel_id')}/{msg_id}")
+
+async def manage_ppp_role(ctx, user: discord.Member, role_name: str, action: str):
+    role_key = f"{role_name.lower()}_role_id"
+    role = get(ctx.guild.roles, id=bot.config.get(role_key))
+    updates_channel = get(ctx.guild.channels, id=bot.config.get('ppp_updates_channel_id'))
+    if not role or not updates_channel:
+        return await ctx.send(embed=create_embed("Error", "PPP system roles or updates channel not configured.", discord.Color.red()), ephemeral=True)
+    
+    if action == "add":
+        if role in user.roles:
+            return await ctx.send(f"{user.mention} already has the {role.name} role.", ephemeral=True)
+        await user.add_roles(role)
+        desc = f"{user.mention} has been given the **{role.name}** role by {ctx.author.mention}."
+        await ctx.send(f"Added {role.name} to {user.mention}.", ephemeral=True)
+    else: # remove
+        if role not in user.roles:
+            return await ctx.send(f"{user.mention} does not have the {role.name} role.", ephemeral=True)
+        await user.remove_roles(role)
+        desc = f"{user.mention} has had the **{role.name}** role removed by {ctx.author.mention}."
+        await ctx.send(f"Removed {role.name} from {user.mention}.", ephemeral=True)
+        
+    await updates_channel.send(embed=create_embed(f"PPP Role Update", desc, discord.Color.blue()))
+
+
+@bot.hybrid_group(name="pups", description="Manage the PUPS role.")
+@is_ppp_manager()
+async def pups(ctx):
+    if ctx.invoked_subcommand is None: await ctx.send("Invalid command. Use `add` or `remove`.", ephemeral=True)
+@pups.command(name="add")
+async def pups_add(ctx, user: discord.Member): await manage_ppp_role(ctx, user, "pups", "add")
+@pups.command(name="remove")
+async def pups_remove(ctx, user: discord.Member): await manage_ppp_role(ctx, user, "pups", "remove")
+
+
+@bot.hybrid_group(name="pugs", description="Manage the PUGS role.")
+@is_ppp_manager()
+async def pugs(ctx):
+    if ctx.invoked_subcommand is None: await ctx.send("Invalid command. Use `add` or `remove`.", ephemeral=True)
+@pugs.command(name="add")
+async def pugs_add(ctx, user: discord.Member): await manage_ppp_role(ctx, user, "pugs", "add")
+@pugs.command(name="remove")
+async def pugs_remove(ctx, user: discord.Member): await manage_ppp_role(ctx, user, "pugs", "remove")
+
+
+@bot.hybrid_group(name="premium", description="Manage the Premium role.")
+@is_ppp_manager()
+async def premium(ctx):
+    if ctx.invoked_subcommand is None: await ctx.send("Invalid command. Use `add` or `remove`.", ephemeral=True)
+@premium.command(name="add")
+async def premium_add(ctx, user: discord.Member): await manage_ppp_role(ctx, user, "premium", "add")
+@premium.command(name="remove")
+async def premium_remove(ctx, user: discord.Member): await manage_ppp_role(ctx, user, "premium", "remove")
 
 # --- Run ---
 if __name__ == "__main__":
