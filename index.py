@@ -383,7 +383,12 @@ async def on_voice_state_update(member, before, after):
     if member.bot: return
     if not before.channel and after.channel:
         if after.channel.id in bot.queues_in_progress: return
-        queue_channels = { bot.config.get('queue_3v3_id'): {'size': 6, 'name': '3v3'}, bot.config.get('queue_4v4_id'): {'size': 8, 'name': '4v4'},}
+        queue_channels = {
+            bot.config.get('queue_3v3_id'): {'size': 6, 'name': '3v3'},
+            bot.config.get('queue_4v4_id'): {'size': 8, 'name': '4v4'},
+            bot.config.get('queue_3v3_pups_id'): {'size': 6, 'name': '3v3 PUPS+'},
+            bot.config.get('queue_4v4_pups_id'): {'size': 8, 'name': '4v4 PUPS+'},
+        }
         if after.channel.id not in queue_channels: return
         queue_info = queue_channels[after.channel.id]
         if len(after.channel.members) >= queue_info['size']:
@@ -517,8 +522,8 @@ async def strike_user_internal(guild, member: discord.Member, reason: str, moder
             mod_id = moderator.id if isinstance(moderator, discord.Member) else bot.user.id
             await cursor.execute("INSERT INTO moderation_logs (target_id, moderator_id, action_type, reason) VALUES (%s, %s, 'strike', %s)", (member.id, mod_id, reason))
             await cursor.execute("UPDATE players SET elo = elo - 40 WHERE discord_id = %s", (member.id,)); strike_id = cursor.lastrowid
-    embed = create_embed("User Striked", f"{member.mention} has been striked and lost 40 ELO. (ID: {strike_id})", discord.Color.red())
-    embed.add_field(name="Reason", value=reason).set_footer(text=f"Striked by {mod_name}")
+    embed = create_embed("User Striked", f"**Member:** {member.mention}\n**Action:** Strike\n**ELO Change:** -40", discord.Color.red())
+    embed.add_field(name="Reason", value=reason).set_footer(text=f"Striked by {mod_name} | Strike ID: {strike_id}")
     if log_channel: await log_channel.send(embed=embed)
 
 @bot.hybrid_command(name="strike", description="Issue a strike to a user.")
