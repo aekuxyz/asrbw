@@ -3376,4 +3376,3 @@ if __name__ == '__main__':
     # await fetch_last_game_num() # Requires running async outside of bot.run
 
     bot.run(DISCORD_BOT_TOKEN)
-
