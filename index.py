@@ -19,7 +19,7 @@ DB_USER = os.getenv('DB_USER', 'your_db_user')
 DB_PASSWORD = os.getenv('DB_PASSWORD', 'your_db_password')
 DB_NAME = os.getenv('DB_NAME', 'your_database_name')
 
-# Discord Channel/Category IDs (replace with your actual IDs)
+# Discord Channel/Category IDs (replace '0' with your actual IDs)
 REGISTER_CHANNEL_ID = int(os.getenv('REGISTER_CHANNEL_ID', '0')) # e.g., 123456789012345678
 TICKETS_CHANNEL_ID = int(os.getenv('TICKETS_CHANNEL_ID', '0'))
 TICKET_CATEGORY_ID = int(os.getenv('TICKET_CATEGORY_ID', '0'))
@@ -39,7 +39,7 @@ POLL_VOTING_CHANNEL_ID = int(os.getenv('POLL_VOTING_CHANNEL_ID', '0'))
 AFK_VC_ID = int(os.getenv('AFK_VC_ID', '0')) # The voice channel to move AFK players to
 GAMES_CHANNEL_ID = int(os.getenv('GAMES_CHANNEL_ID', '0')) # Channel to send game result images
 
-# Discord Role IDs (replace with your actual IDs)
+# Discord Role IDs (replace '0' with your actual IDs)
 REGISTERED_ROLE_ID = int(os.getenv('REGISTERED_ROLE_ID', '0'))
 BANNED_ROLE_ID = int(os.getenv('BANNED_ROLE_ID', '0'))
 MUTED_ROLE_ID = int(os.getenv('MUTED_ROLE_ID', '0'))
@@ -52,7 +52,7 @@ PI_ROLE_ID = int(os.getenv('PI_ROLE_ID', '0')) # Highest admin role
 PPP_MANAGER_ROLE_ID = int(os.getenv('PPP_MANAGER_ROLE_ID', '0')) # Role for managing PPP polls
 SCREENSHARING_TEAM_ROLE_ID = int(os.getenv('SCREENSHARING_TEAM_ROLE_ID', '0'))
 
-# Elo Role IDs (replace with your actual IDs)
+# Elo Role IDs (replace '0' with your actual IDs)
 ELO_ROLES = {
     "Iron": int(os.getenv('ELO_IRON_ROLE_ID', '0')),
     "Bronze": int(os.getenv('ELO_BRONZE_ROLE_ID', '0')),
@@ -341,8 +341,8 @@ async def send_to_minecraft_server(endpoint, data):
 
 # Placeholder for Minecraft-initiated callbacks (e.g., when a game ends)
 # These would be handled by a web server framework (Flask, FastAPI) running alongside your bot.
-# For example, if your bot runs a Flask server:
-# @app.post("/game_ended")
+# For example:
+# @app.post("/game_ended") # Using Flask/FastAPI here as an example
 # async def game_ended():
 #     data = request.json
 #     await process_game_result(data)
@@ -389,21 +389,20 @@ async def process_game_result(game_data):
             player_discord_ids = {} # {IGN: Discord_ID}
 
             # Fetch Discord IDs and current Elos for all players
-            await cur.execute(
-                f"SELECT discord_id, minecraft_ign, elo, wins, losses, mvps, current_streak FROM users WHERE minecraft_ign IN ({','.join(['%s']*len(all_player_igns))})",
-                tuple(all_player_igns)
-            )
-            fetched_players = await cur.fetchall()
-            for p in fetched_players:
-                player_discord_ids[p['minecraft_ign']] = p['discord_id']
+            # Using IN clause with multiple %s for parameterized query
+            if all_player_igns: # Avoid empty IN clause
+                placeholders = ','.join(['%s'] * len(all_player_igns))
+                await cur.execute(
+                    f"SELECT discord_id, minecraft_ign, elo, wins, losses, mvps, current_streak FROM users WHERE minecraft_ign IN ({placeholders})",
+                    tuple(all_player_igns)
+                )
+                fetched_players = await cur.fetchall()
+                for p in fetched_players:
+                    player_discord_ids[p['minecraft_ign']] = p['discord_id']
 
             updates = []
             mvp_discord_id = player_discord_ids.get(mvp_ign)
-            winning_team_elo_gain = 0
-            losing_team_elo_loss = 0
-            mvp_elo_gain = 0
-
-            # Get Elo models based on current Elo roles
+            
             for ign in all_player_igns:
                 discord_id = player_discord_ids.get(ign)
                 if not discord_id:
@@ -411,42 +410,38 @@ async def process_game_result(game_data):
                     continue
 
                 user_data = next((p for p in fetched_players if p['discord_id'] == discord_id), None)
-                if not user_data: continue
+                if not user_data: continue # Should not happen if fetched_players is correct
 
                 current_elo_role = await get_elo_role_name(user_data['elo'])
                 elo_model = ELO_MODELS.get(current_elo_role, ELO_MODELS['Iron'])
 
+                wins_change = 0
+                losses_change = 0
+                mvps_change = 0
+                elo_change = 0
+                streak_change = 0
+
                 if ign in winning_team_igns: # Winning team
-                    elo_gain = elo_model['win']
-                    winning_team_elo_gain = elo_gain # Assuming same gain for all winners in a tier
-                    updates.append({
-                        "discord_id": discord_id,
-                        "elo_change": elo_gain,
-                        "wins_change": 1,
-                        "losses_change": 0,
-                        "mvps_change": 0,
-                        "streak_change": 1, # Increment streak for winners
-                    })
+                    wins_change = 1
+                    elo_change = elo_model['win']
+                    streak_change = 1 # Increment streak for winners
                 else: # Losing team
-                    elo_loss = elo_model['loss']
-                    losing_team_elo_loss = elo_loss # Assuming same loss for all losers in a tier
-                    updates.append({
-                        "discord_id": discord_id,
-                        "elo_change": -elo_loss,
-                        "wins_change": 0,
-                        "losses_change": 1,
-                        "mvps_change": 0,
-                        "streak_change": -user_data['current_streak'] - 1, # Reset and decrement streak for losers
-                    })
+                    losses_change = 1
+                    elo_change = -elo_model['loss']
+                    streak_change = -user_data['current_streak'] - 1 # Reset and decrement streak for losers
 
                 if ign == mvp_ign:
-                    mvp_elo_gain = elo_model['mvp']
-                    # Find MVP in updates and add MVP Elo
-                    for u in updates:
-                        if u['discord_id'] == discord_id:
-                            u['elo_change'] += mvp_elo_gain
-                            u['mvps_change'] += 1
-                            break
+                    mvps_change = 1
+                    elo_change += elo_model['mvp']
+                
+                updates.append({
+                    "discord_id": discord_id,
+                    "elo_change": elo_change,
+                    "wins_change": wins_change,
+                    "losses_change": losses_change,
+                    "mvps_change": mvps_change,
+                    "streak_change": streak_change,
+                })
 
             # Apply updates
             for update in updates:
@@ -464,7 +459,7 @@ async def process_game_result(game_data):
                         wins = wins + %s,
                         losses = losses + %s,
                         mvps = mvps + %s,
-                        current_streak = CASE WHEN %s > 0 THEN current_streak + %s ELSE 0 END, -- Reset streak on loss
+                        current_streak = CASE WHEN %s > 0 THEN current_streak + %s ELSE 0 END, -- If wins_change is positive, increment streak. Else, reset to 0.
                         last_game_date = %s
                     WHERE discord_id = %s
                     """,
@@ -839,7 +834,7 @@ async def strike_request_poll_monitor():
 
                     embed = create_embed(
                         "Strike Request Result: Accepted",
-                        f"{target_user.mention} has been **striked** by community vote.\n"
+                        f"The community has voted to **strike** {target_user.mention}.\n"
                         f"Reason: {reason}\nStrike ID: `{strike_id_str}`"
                     )
                     await request_channel.send(embed=embed)
@@ -1426,7 +1421,7 @@ def parse_duration(duration_str: str):
     try:
         value = int(duration_str[:-1])
     except ValueError:
-        return None, "Invalid duration format. Use, e.g., '1h', '30m', '1d', '1y'."
+        return None, "Invalid duration format. Use, e.g., '1s', '1m', '1h', '1d', '1y'."
 
     if unit == 's':
         return timedelta(seconds=value), None
@@ -1748,6 +1743,11 @@ async def strike_remove_command(ctx: commands.Context, strike_id: str, *, reason
             await log_action_to_channel(STRIKE_LOGS_CHANNEL_ID, embed.title, embed.description, embed.color)
             print(f"{ctx.author.display_name} removed strike {strike_id} from {user_id}: {reason}")
 
+    except discord.Forbidden:
+        await ctx.send(embed=create_embed("Permissions Error", "I do not have permission to remove the banned role."))
+    except Exception as e:
+        await ctx.send(embed=create_embed("Error", f"An error occurred: {e}"))
+
 @bot.command(name='strikerequest', aliases=['sr'])
 async def strike_request_command(ctx: commands.Context, member: discord.Member, reason: str, proof: str):
     """Allows players to request a strike on another player with proof."""
@@ -1853,7 +1853,7 @@ async def screenshare_command(ctx: commands.Context, member: discord.Member, rea
             await ctx.send(embed=create_embed("Error", "Ticket category not found. Cannot create screenshare ticket."))
             return
 
-        channel_name = f"ss-ticket-{member.name.lower().replace(' ', '-')}-{random.randint(100,999)}"
+        channel_name = f"ss-ticket-{member.name.lower().replace(' ', '-')}-{random.randint(1000,9999)}"
         overwrites = {
             guild.default_role: discord.PermissionOverwrite(read_messages=False),
             ctx.author: discord.PermissionOverwrite(read_messages=True, send_messages=True),
@@ -1888,7 +1888,12 @@ async def screenshare_command(ctx: commands.Context, member: discord.Member, rea
         view.add_item(decline_button)
 
         async def accept_callback(interaction: discord.Interaction):
-            if not has_roles(SCREENSHARING_TEAM_ROLE_ID)(interaction): # Ensure only SS team can interact
+            # This check needs to be an instance check for the interaction, not a global check
+            # For simplicity, we are passing ctx.author and ctx.guild roles via function, or use interaction.user.roles directly.
+            # `is_staff()` is a `commands.check` and cannot directly check interaction.user.roles outside a command context.
+            # Best to replicate the logic or pass the roles correctly.
+            member_roles = [role.id for role in interaction.user.roles]
+            if not any(role_id in member_roles for role_id in [SCREENSHARING_TEAM_ROLE_ID]): 
                 await interaction.response.send_message("You are not authorized to accept screenshares.", ephemeral=True)
                 return
             
@@ -1917,7 +1922,8 @@ async def screenshare_command(ctx: commands.Context, member: discord.Member, rea
             await ss_ticket_channel.send(embed=embed_log)
 
         async def decline_callback(interaction: discord.Interaction):
-            if not has_roles(SCREENSHARING_TEAM_ROLE_ID)(interaction):
+            member_roles = [role.id for role in interaction.user.roles]
+            if not any(role_id in member_roles for role_id in [SCREENSHARING_TEAM_ROLE_ID]):
                 await interaction.response.send_message("You are not authorized to decline screenshares.", ephemeral=True)
                 return
 
@@ -2022,10 +2028,25 @@ async def ss_close_command(ctx: commands.Context, *, reason: str = "No reason pr
 
 # --- Poll Commands (PPP Manager Only) ---
 
-@bot.command(name='poll')
+@bot.group(name='poll', invoke_without_command=True) # Changed from @bot.command to @bot.group
 @is_ppp_manager()
-async def create_poll_command(ctx: commands.Context, kind: str, member: discord.Member = None):
+async def create_poll_command(ctx: commands.Context):
+    """Starts a poll in #ppp-voting or displays poll commands."""
+    await ctx.message.add_reaction('✅')
+    if ctx.invoked_subcommand is None:
+        embed = create_embed(
+            "Poll Commands",
+            "Use `=poll create <kind> [user_id]` to create a new poll.\n"
+            "Use `=poll close <kind> [user_id]` to close a poll.\n"
+            "Use `=mypoll <kind>` to see your poll status."
+        )
+        await ctx.send(embed=embed)
+
+@create_poll_command.command(name='create') # Now a subcommand of 'poll'
+@is_ppp_manager()
+async def poll_create_subcommand(ctx: commands.Context, kind: str, member: discord.Member = None):
     """Starts a poll in #ppp-voting."""
+    # Logic from the original create_poll_command goes here
     await ctx.message.add_reaction('✅')
 
     poll_channel = bot.get_channel(POLL_VOTING_CHANNEL_ID)
@@ -2048,7 +2069,7 @@ async def create_poll_command(ctx: commands.Context, kind: str, member: discord.
         embed.add_field(name="Target User", value=member.mention, inline=True)
 
     message = await poll_channel.send(embed=embed)
-    await message.add_reaction('�')
+    await message.add_reaction('👍')
     await message.add_reaction('👎')
 
     async with bot.db_pool.acquire() as conn:
@@ -2061,10 +2082,11 @@ async def create_poll_command(ctx: commands.Context, kind: str, member: discord.
     
     await ctx.send(embed=create_embed("Poll Created", f"Poll '{kind}' created in {poll_channel.mention}."), delete_after=5)
 
-@bot.command(name='pollclose')
+@create_poll_command.command(name='close') # Now a subcommand of 'poll'
 @is_ppp_manager()
-async def close_poll_command(ctx: commands.Context, kind: str, member: discord.Member = None):
+async def poll_close_subcommand(ctx: commands.Context, kind: str, member: discord.Member = None):
     """Closes an active poll."""
+    # Logic from the original close_poll_command goes here
     await ctx.message.add_reaction('✅')
 
     async with bot.db_pool.acquire() as conn:
@@ -2390,6 +2412,8 @@ async def leaderboard_command(ctx: commands.Context, stat_type: str = 'elo'):
     async with bot.db_pool.acquire() as conn:
         async with conn.cursor(aiomysql.DictCursor) as cur:
             # Note: For 'games', we calculate on the fly.
+            # To handle 'wins + losses + ties' in ORDER BY, it's safer to fetch all and sort in Python
+            # or add a computed column/view in SQL if performance is critical for very large tables.
             query = f"SELECT discord_id, minecraft_ign, elo, wins, losses, ties, mvps, current_streak FROM users ORDER BY {order_by_column} DESC LIMIT 10"
             await cur.execute(query)
             top_players = await cur.fetchall()
@@ -2517,12 +2541,26 @@ async def admin_purge_all(ctx: commands.Context):
     try:
         async with bot.db_pool.acquire() as conn:
             async with conn.cursor() as cur:
-                await cur.execute("TRUNCATE TABLE game_history")
-                await cur.execute("TRUNCATE TABLE moderation_logs")
-                await cur.execute("TRUNCATE TABLE strike_requests")
-                await cur.execute("TRUNCATE TABLE ss_tickets")
-                await cur.execute("TRUNCATE TABLE polls")
-                await cur.execute("TRUNCATE TABLE poll_votes")
+                # Ensure tables exist before truncating to avoid errors on fresh DB
+                await cur.execute("SHOW TABLES LIKE 'game_history'")
+                if await cur.fetchone(): await cur.execute("TRUNCATE TABLE game_history")
+                
+                await cur.execute("SHOW TABLES LIKE 'moderation_logs'")
+                if await cur.fetchone(): await cur.execute("TRUNCATE TABLE moderation_logs")
+                
+                await cur.execute("SHOW TABLES LIKE 'strike_requests'")
+                if await cur.fetchone(): await cur.execute("TRUNCATE TABLE strike_requests")
+                
+                await cur.execute("SHOW TABLES LIKE 'ss_tickets'")
+                if await cur.fetchone(): await cur.execute("TRUNCATE TABLE ss_tickets")
+                
+                await cur.execute("SHOW TABLES LIKE 'polls'")
+                if await cur.fetchone(): await cur.execute("TRUNCATE TABLE polls")
+                
+                await cur.execute("SHOW TABLES LIKE 'poll_votes'")
+                if await cur.fetchone(): await cur.execute("TRUNCATE TABLE poll_votes")
+                
+                # Reset users table (assuming 'users' table always exists after initial setup)
                 await cur.execute("UPDATE users SET elo = 0, wins = 0, losses = 0, ties = 0, mvps = 0, current_streak = 0, last_game_date = NULL, is_registered = FALSE, registration_code = NULL")
                 await conn.commit()
 
@@ -2537,7 +2575,7 @@ async def admin_purge_all(ctx: commands.Context):
                     if member.nick and member.nick.startswith('['): # Assuming [ELO] IGN format
                         await member.edit(nick=None)
                     
-                    roles_to_remove = [r for r in member.roles if r == registered_role or r in elo_roles_to_remove]
+                    roles_to_remove = [r for r in member.roles if (registered_role and r == registered_role) or (r in elo_roles_to_remove)]
                     if roles_to_remove:
                         await member.remove_roles(*roles_to_remove)
                     # Add Iron role if needed after purge (re-registration handles this)
@@ -2588,10 +2626,11 @@ async def modify_wins(ctx: commands.Context, member: discord.Member, amount: int
                 SET wins = wins + %s,
                     elo = elo + %s,
                     mvps = mvps + %s,
-                    current_streak = current_streak + %s
+                    current_streak = current_streak + %s,
+                    last_game_date = %s
                 WHERE discord_id = %s
                 """,
-                (amount, elo_change, amount if mvp_status == 1 else 0, amount, member.id) # Increment streak by amount of wins
+                (amount, elo_change, amount if mvp_status == 1 else 0, amount, datetime.now(), member.id) # Increment streak by amount of wins
             )
             await conn.commit()
 
@@ -2633,10 +2672,11 @@ async def modify_losses(ctx: commands.Context, member: discord.Member, amount: i
                 UPDATE users
                 SET losses = losses + %s,
                     elo = elo + %s,
-                    current_streak = 0 -- Reset streak on loss
+                    current_streak = 0, -- Reset streak on loss
+                    last_game_date = %s
                 WHERE discord_id = %s
                 """,
-                (amount, elo_change, member.id)
+                (amount, elo_change, datetime.now(), member.id)
             )
             await conn.commit()
 
@@ -2664,8 +2704,8 @@ async def elo_change(ctx: commands.Context, member: discord.Member, amount: int)
                 return
 
             await cur.execute(
-                "UPDATE users SET elo = elo + %s WHERE discord_id = %s",
-                (amount, member.id)
+                "UPDATE users SET elo = elo + %s, last_game_date = %s WHERE discord_id = %s",
+                (amount, datetime.now(), member.id)
             )
             await conn.commit()
 
@@ -2694,8 +2734,8 @@ async def set_elo(ctx: commands.Context, member: discord.Member, new_elo: int):
                 return
 
             await cur.execute(
-                "UPDATE users SET elo = %s WHERE discord_id = %s",
-                (new_elo, member.id)
+                "UPDATE users SET elo = %s, last_game_date = %s WHERE discord_id = %s",
+                (new_elo, datetime.now(), member.id)
             )
             await conn.commit()
 
@@ -2784,7 +2824,7 @@ async def undo_game_score(ctx: commands.Context, game_no: int):
                 losses_change = 0
                 mvps_change = 0
                 elo_change = 0
-                streak_reset_needed = False
+                streak_change = 0 # This will be set based on revert logic
 
                 if ign in winning_igns: # Revert winner's stats
                     wins_change = -1
@@ -2792,19 +2832,14 @@ async def undo_game_score(ctx: commands.Context, game_no: int):
                     if discord_id == mvp_user_id:
                         mvps_change = -1
                         elo_change -= elo_model['mvp']
-                    # Revert streak: If streak was 1, it becomes 0. If it was more, it depends on history.
-                    # Simpler for undo: just decrement by 1 if current_streak > 0, if it was 1, set to 0.
-                    # This is tricky without full historical streak tracking. A simple decrement/reset might be sufficient.
-                    if user_data['current_streak'] > 0:
-                        streak_change = -1
-                    else:
-                        streak_change = 0 # Cannot go negative
+                    # Revert streak: Decrement streak by 1. If it was 1, set to 0.
+                    streak_change = -1 if user_data['current_streak'] > 0 else 0 
                 else: # Revert loser's stats
                     losses_change = -1
                     elo_change = elo_model['loss'] # Add back what was lost
                     # Streak: If a loser had their streak reset, undoing means their streak might need to be restored.
-                    # This requires sophisticated streak tracking. For now, assume it was reset to 0 and can't be "un-reset" easily.
-                    streak_change = 0 # No change to streak on undoing a loss
+                    # This is complex without full historical streak tracking. For now, assume it was reset to 0 and cannot be "un-reset" simply.
+                    streak_change = 0 # No change to streak on undoing a loss that resulted in a reset
 
                 await cur.execute(
                     """
@@ -2813,7 +2848,7 @@ async def undo_game_score(ctx: commands.Context, game_no: int):
                         losses = losses + %s,
                         elo = elo + %s,
                         mvps = mvps + %s,
-                        current_streak = CASE WHEN current_streak + %s >= 0 THEN current_streak + %s ELSE 0 END, -- Protect against negative
+                        current_streak = CASE WHEN (current_streak + %s) >= 0 THEN current_streak + %s ELSE 0 END, -- Ensure streak doesn't go negative
                         last_game_date = %s
                     WHERE discord_id = %s
                     """,
@@ -2863,10 +2898,6 @@ async def rescore_game(ctx: commands.Context, game_no: int, winning_team_label: 
                 await ctx.send(embed=create_embed("Game Not Undone", f"Game #{game_no} must be undone first before it can be rescoreed. Use `=undo {game_no}`."))
                 return
 
-            # Undo the previous score first (if not already undone) - this command assumes it's already undone.
-            # If not undone, you'd need to first revert its existing score, then apply the new one.
-            # For simplicity, assuming `=undo` is called beforehand if necessary.
-
             team1_igns = json.loads(game_data['team1_players'])
             team2_igns = json.loads(game_data['team2_players'])
             
@@ -2883,13 +2914,15 @@ async def rescore_game(ctx: commands.Context, game_no: int, winning_team_label: 
             player_discord_ids = {} # {IGN: Discord_ID}
 
             # Fetch Discord IDs and current Elos for all players
-            await cur.execute(
-                f"SELECT discord_id, minecraft_ign, elo, wins, losses, mvps, current_streak FROM users WHERE minecraft_ign IN ({','.join(['%s']*len(all_player_igns))})",
-                tuple(all_player_igns)
-            )
-            fetched_players = await cur.fetchall()
-            for p in fetched_players:
-                player_discord_ids[p['minecraft_ign']] = p['discord_id']
+            if all_player_igns:
+                placeholders = ','.join(['%s'] * len(all_player_igns))
+                await cur.execute(
+                    f"SELECT discord_id, minecraft_ign, elo, wins, losses, mvps, current_streak FROM users WHERE minecraft_ign IN ({placeholders})",
+                    tuple(all_player_igns)
+                )
+                fetched_players = await cur.fetchall()
+                for p in fetched_players:
+                    player_discord_ids[p['minecraft_ign']] = p['discord_id']
 
             updates = []
             
@@ -3005,7 +3038,7 @@ async def score_game(ctx: commands.Context, game_no: int, winning_team_label: st
 
 # --- Ticket System ---
 
-@bot.command(name='ticket')
+@bot.group(name='ticket', invoke_without_command=True) # Changed from @bot.command to @bot.group
 async def ticket_group(ctx: commands.Context):
     """Handles ticket system commands."""
     await ctx.message.add_reaction('✅')
@@ -3083,7 +3116,8 @@ async def create_ticket(ctx: commands.Context, ticket_type: str):
     view.add_item(close_button)
 
     async def claim_callback(interaction: discord.Interaction):
-        if not is_staff()(interaction):
+        member_roles = [role.id for role in interaction.user.roles]
+        if not any(role_id in member_roles for role_id in [STAFF_ROLE_ID, MOD_ROLE_ID, ADMIN_ROLE_ID, MANAGER_ROLE_ID, PI_ROLE_ID]): # Simplified staff check
             await interaction.response.send_message("You are not authorized to claim tickets.", ephemeral=True)
             return
         
@@ -3105,8 +3139,7 @@ async def create_ticket(ctx: commands.Context, ticket_type: str):
     async def close_callback(interaction: discord.Interaction):
         # Anyone can close, but staff will get log, user will get moved to closed category
         await interaction.response.send_message("Please provide a reason to close this ticket in the chat.", ephemeral=True)
-        # We need to wait for a message after this, so this isn't handled by a simple callback.
-        # This will be handled by the `=close` command that is designed to be run inside the ticket channel.
+        # This part of the interaction is intentionally left simple here, as the =close command is intended to handle the full closure logic.
 
     claim_button.callback = claim_callback
     close_button.callback = close_button # The =close command will handle the actual closure.
@@ -3114,7 +3147,7 @@ async def create_ticket(ctx: commands.Context, ticket_type: str):
     await ticket_channel.send(embed=embed, view=view)
     await ctx.send(embed=create_embed("Ticket Created", f"Your ticket has been created in {ticket_channel.mention}."))
     embed_log = create_embed("New Ticket Created", f"Ticket #{ticket_id} ({ticket_type}) created by {ctx.author.mention} in {ticket_channel.mention}.")
-    await log_action_to_channel(TICKET_LOGS_CHANNEL_ID, embed_log.title, embed_log.log_description, embed_log.color)
+    await log_action_to_channel(TICKET_LOGS_CHANNEL_ID, embed_log.title, embed_log.description, embed_log.color)
 
 
 @bot.command(name='close')
@@ -3234,55 +3267,49 @@ async def on_member_update(before: discord.Member, after: discord.Member):
     before_roles = {role.id for role in before.roles}
     after_roles = {role.id for role in after.roles}
 
-    # Find staff roles the member has
-    before_staff_roles = {role_id for role_id in before_roles if role_id in staff_roles_hierarchy}
-    after_staff_roles = {role_id for role_id in after_roles if role_id in staff_roles_hierarchy}
+    # Filter for only roles relevant to the hierarchy
+    before_staff_roles_filtered = {
+        role_id: staff_roles_hierarchy[role_id]
+        for role_id in before_roles if role_id in staff_roles_hierarchy
+    }
+    after_staff_roles_filtered = {
+        role_id: staff_roles_hierarchy[role_id]
+        for role_id in after_roles if role_id in staff_roles_hierarchy
+    }
+
+    # Get the "highest" role before and after
+    def get_highest_role(role_dict):
+        if not role_dict:
+            return None, -1
+        highest_id = max(role_dict, key=lambda r_id: list(staff_roles_hierarchy.keys()).index(r_id))
+        return role_dict[highest_id], list(staff_roles_hierarchy.keys()).index(highest_id)
+
+    before_highest_name, before_highest_index = get_highest_role(before_staff_roles_filtered)
+    after_highest_name, after_highest_index = get_highest_role(after_staff_roles_filtered)
 
     staff_updates_channel = bot.get_channel(STAFF_UPDATES_CHANNEL_ID)
     if not staff_updates_channel:
         print("Staff updates channel not found.")
         return
 
-    # Check for promotions
-    for new_role_id in after_staff_roles - before_staff_roles:
-        new_role_name = staff_roles_hierarchy.get(new_role_id)
-        if new_role_name:
-            # Check if they gained a higher role
-            promoted_from = None
-            for old_role_id in before_staff_roles:
-                # Assuming hierarchy map is ordered or has a clear way to compare
-                if list(staff_roles_hierarchy.keys()).index(new_role_id) > list(staff_roles_hierarchy.keys()).index(old_role_id):
-                    if not promoted_from or list(staff_roles_hierarchy.keys()).index(old_role_id) > list(staff_roles_hierarchy.keys()).index(promoted_from):
-                        promoted_from = staff_roles_hierarchy.get(old_role_id)
-            
-            title = "Staff Promotion!"
-            description = f"🎉 {after.mention} has been **promoted** to **{new_role_name}**!"
-            if promoted_from:
-                description += f" (from {promoted_from})"
-            
-            embed = create_embed(title, description, color=discord.Color.green())
-            await staff_updates_channel.send(embed=embed)
+    # Promotion/Demotion Logic
+    if after_highest_index > before_highest_index: # Promoted
+        title = "Staff Promotion!"
+        description = f"🎉 {after.mention} has been **promoted** to **{after_highest_name}**!"
+        if before_highest_name:
+            description += f" (from {before_highest_name})"
+        embed = create_embed(title, description, color=discord.Color.green())
+        await staff_updates_channel.send(embed=embed)
+    elif after_highest_index < before_highest_index: # Demoted
+        title = "Staff Demotion!"
+        description = f"⬇️ {after.mention} has been **demoted** from **{before_highest_name}**!"
+        if after_highest_name:
+            description += f" (to {after_highest_name})"
+        else:
+            description += " (and no longer has staff roles)"
+        embed = create_embed(title, description, color=discord.Color.red())
+        await staff_updates_channel.send(embed=embed)
 
-    # Check for demotions
-    for lost_role_id in before_staff_roles - after_staff_roles:
-        lost_role_name = staff_roles_hierarchy.get(lost_role_id)
-        if lost_role_name:
-            # Check if they lost a higher role (and still have lower ones, or none)
-            demoted_to = None
-            for remaining_role_id in after_staff_roles:
-                if list(staff_roles_hierarchy.keys()).index(lost_role_id) > list(staff_roles_hierarchy.keys()).index(remaining_role_id):
-                    if not demoted_to or list(staff_roles_hierarchy.keys()).index(remaining_role_id) < list(staff_roles_hierarchy.keys()).index(demoted_to):
-                        demoted_to = staff_roles_hierarchy.get(remaining_role_id)
-            
-            title = "Staff Demotion!"
-            description = f"⬇️ {after.mention} has been **demoted** from **{lost_role_name}**!"
-            if demoted_to:
-                description += f" (to {demoted_to})"
-            else:
-                description += " (and no longer has staff roles)"
-
-            embed = create_embed(title, description, color=discord.Color.red())
-            await staff_updates_channel.send(embed=embed)
 
 # --- Chat Purge ---
 @bot.command(name='purgechat')
@@ -3291,27 +3318,31 @@ async def purge_chat(ctx: commands.Context, message_id_or_none: int = None):
     """
     Purges chat messages.
     If message_id is provided, deletes messages until that ID.
-    If no message_id, deletes all messages in the channel.
+    If no message_id, deletes all messages from the channel.
     """
     await ctx.message.add_reaction('✅')
 
     try:
         if message_id_or_none is None:
-            # Purge all messages
+            # Purge all messages in the channel
             await ctx.channel.purge(limit=None)
             embed = create_embed("Chat Purged", f"All messages in {ctx.channel.mention} have been purged by {ctx.author.mention}.")
             await ctx.send(embed=embed)
         else:
-            # Purge until a specific message ID
+            # Purge messages until a specific message ID
             target_message = await ctx.channel.fetch_message(message_id_or_none)
+            # Fetch history before the command message, up to but not including the target message
             deleted_count = 0
-            async for message in ctx.channel.history(limit=None, after=target_message):
-                if message.id != ctx.message.id: # Don't delete the command message itself
-                    await message.delete()
-                    deleted_count += 1
+            async for message in ctx.channel.history(limit=None, before=ctx.message, after=target_message):
+                await message.delete()
+                deleted_count += 1
+            
+            # Delete the target message and the command message
+            await target_message.delete()
+            await ctx.message.delete()
+
             await ctx.send(embed=create_embed("Chat Purged", f"Purged {deleted_count} messages in {ctx.channel.mention} until message ID `{message_id_or_none}` by {ctx.author.mention}."))
-            await target_message.delete() # Delete the target message itself
-            await ctx.message.delete() # Delete the command message
+            
 
     except discord.Forbidden:
         await ctx.send(embed=create_embed("Permissions Error", "I do not have permission to delete messages."))
@@ -3345,3 +3376,4 @@ if __name__ == '__main__':
     # await fetch_last_game_num() # Requires running async outside of bot.run
 
     bot.run(DISCORD_BOT_TOKEN)
+
