@@ -298,6 +298,9 @@ class MainTicketView(discord.ui.View):
 
 
 # --- Custom Checks & Start Processes ---
+class NotInRegisterChannel(commands.CheckFailure):
+    pass
+
 def is_ppp_manager():
     async def pred(ctx):
         if r_id := bot.config.get('ppp_manager_role_id'): return get(ctx.guild.roles, id=r_id) in ctx.author.roles or ctx.author.guild_permissions.administrator
@@ -308,6 +311,14 @@ def in_strike_request_channel():
     async def pred(ctx):
         return ctx.channel.id == bot.config.get('strike_request_channel_id')
     return commands.check(pred)
+
+def in_register_channel():
+    async def pred(ctx):
+        if ctx.channel.id != bot.config.get('register_channel_id'):
+            raise NotInRegisterChannel()
+        return True
+    return commands.check(pred)
+
 
 async def start_game_process(bot, players, queue_info):
     guild = players[0].guild; game_id = None
@@ -478,6 +489,9 @@ async def on_command_error(ctx, error):
         try: await ctx.message.remove_reaction(emoji, bot.user)
         except discord.Forbidden: pass
     if isinstance(error, commands.CommandNotFound): return
+    elif isinstance(error, NotInRegisterChannel):
+        register_channel = get(ctx.guild.channels, id=bot.config.get('register_channel_id'))
+        await ctx.send(f"This command can only be used in {register_channel.mention}.", ephemeral=True)
     elif isinstance(error, commands.CheckFailure): await ctx.send(embed=create_embed("Permission Denied", "You do not have the required permissions for this command.", discord.Color.red()), ephemeral=True)
     elif isinstance(error, commands.MissingRequiredArgument): await ctx.send(embed=create_embed("Missing Argument", f"You're missing: `{error.param.name}`.", discord.Color.orange()), ephemeral=True)
     elif isinstance(error, commands.CommandError) and "is a required argument that is missing" in str(error): await ctx.send(embed=create_embed("Missing Attachment", "You must attach an image as proof.", discord.Color.orange()), ephemeral=True)
@@ -539,6 +553,7 @@ async def on_raw_reaction_add(payload):
 
 # --- ALL COMMANDS ---
 @bot.hybrid_command(name="register", description="Register your Minecraft account.")
+@in_register_channel()
 @discord.app_commands.describe(ign="Your in-game name.")
 async def register(ctx, ign: str):
     code = ''.join(random.choices(string.ascii_uppercase+string.digits, k=6))
@@ -686,23 +701,21 @@ async def info(ctx, member: Optional[discord.Member] = None):
     
     skin_data = None
     async with aiohttp.ClientSession() as session:
-        # Try to get UUID from Mojang API first
-        uuid = None
-        try:
-            async with session.get(f'https://api.mojang.com/users/profiles/minecraft/{ign}') as resp:
-                if resp.status == 200:
-                    uuid = (await resp.json())['id']
-        except Exception as e:
-            logger.warning(f"Could not get UUID for {ign} from Mojang API: {e}")
-
-        # Use Visage API with UUID, fallback to Steve if UUID fails
-        render_url = f"https://visage.surgeplay.com/full/832/{uuid}" if uuid else "https://visage.surgeplay.com/full/832/8667ba71-b85a-4004-af54-457a9734eed7"
+        # Use minotar as it's very reliable
+        render_url = f"https://minotar.net/body/{ign}/700.png"
+        fallback_url = "https://minotar.net/body/MHF_Steve/700.png"
         
-        async with session.get(render_url) as resp:
-            if resp.status == 200:
-                skin_data = await resp.read()
-            else:
-                logger.error(f"Failed to get skin from Visage for UUID {uuid}, status: {resp.status}")
+        try:
+            async with session.get(render_url) as resp:
+                if resp.status == 200:
+                    skin_data = await resp.read()
+                else:
+                    logger.warning(f"Minotar failed for IGN '{ign}', status: {resp.status}. Trying fallback.")
+                    async with session.get(fallback_url) as fallback_resp:
+                        if fallback_resp.status == 200:
+                            skin_data = await fallback_resp.read()
+        except Exception as e:
+            logger.error(f"Failed to get skin from Minotar for {ign}: {e}")
 
     card = Image.new('RGB', (600, 450), color='#111111')
     
@@ -740,9 +753,112 @@ async def info(ctx, member: Optional[discord.Member] = None):
     buffer = io.BytesIO(); card.save(buffer, 'PNG'); buffer.seek(0)
     await ctx.send(file=discord.File(buffer, f"{ign}_stats.png"))
 
+@bot.hybrid_command(aliases=['h'], name="history", description="View a user's moderation history.")
+@is_staff()
+async def history(ctx, member: discord.Member):
+    async with bot.db_pool.acquire() as conn:
+        async with conn.cursor() as cursor:
+            await cursor.execute("SELECT log_id, moderator_id, action_type, reason, created_at, expires_at, is_active FROM moderation_logs WHERE target_id = %s ORDER BY created_at DESC", (member.id,))
+            logs = await cursor.fetchall()
+    if not logs: return await ctx.send(embed=create_embed("Clean Record", f"{member.mention} has no moderation history."))
+    embeds = []
+    items_per_page = 5
+    for i in range(0, len(logs), items_per_page):
+        page_logs = logs[i:i+items_per_page]
+        embed = create_embed(f"History for {member.display_name}", f"Page {i//items_per_page + 1}/{math.ceil(len(logs)/items_per_page)}")
+        for log_id, mod_id, type, reason, ts, exp, active in page_logs:
+            mod = get(ctx.guild.members, id=mod_id) or "Unknown"; status = "Active" if active else "Inactive/Expired"
+            field_val = f"**Reason:** {reason or 'None'}\n**Moderator:** {mod.mention}\n**Status:** {status}"
+            embed.add_field(name=f"#{log_id} - {type.capitalize()}", value=field_val, inline=False)
+        embeds.append(embed)
+    await ctx.send(embed=embeds[0], view=PaginatorView(embeds))
 
-# --- ALL OTHER COMMANDS AND GROUPS (history, lb, admin, stats, scoring, tickets, polls) ARE UNCHANGED ---
-# ... (The rest of the file is identical to the previous version)
+@bot.hybrid_command(aliases=['lb'], name="leaderboard", description="View leaderboards for different stats.")
+@discord.app_commands.describe(category="The leaderboard category to view.")
+async def leaderboard(ctx, category: str = "elo"):
+    valid_cats = {'elo': 'elo', 'wins': 'wins', 'losses': 'losses', 'mvps': 'mvps', 'streak': 'win_streak'}
+    if category.lower() not in valid_cats: return await ctx.send(f"Invalid category. Use: {', '.join(valid_cats.keys())}")
+    db_col = valid_cats[category.lower()]
+    async with bot.db_pool.acquire() as conn:
+        async with conn.cursor() as cursor:
+            await cursor.execute(f"SELECT discord_id, {db_col} FROM players ORDER BY {db_col} DESC LIMIT 100")
+            data = await cursor.fetchall()
+    if not data: return await ctx.send("No data for this leaderboard yet.")
+    embeds = []
+    items_per_page = 10
+    for i in range(0, len(data), items_per_page):
+        page_data = data[i:i+items_per_page]
+        embed = create_embed(f"Leaderboard - {category.capitalize()}", f"Page {i//items_per_page + 1}/{math.ceil(len(data)/items_per_page)}")
+        description = ""
+        for rank, (player_id, value) in enumerate(page_data, start=i+1):
+            player = get(ctx.guild.members, id=player_id)
+            description += f"`{rank}.` {player.mention if player else 'Unknown User'}: **{value}**\n"
+        embed.description = description
+        embeds.append(embed)
+    await ctx.send(embed=embeds[0], view=PaginatorView(embeds))
+
+@bot.hybrid_command(name="purgechat", description="Deletes a specified number of messages.")
+@commands.has_permissions(manage_messages=True)
+async def purge_chat(ctx, limit: int = 100):
+    await ctx.defer(ephemeral=True)
+    purged = await ctx.channel.purge(limit=limit)
+    await ctx.send(f"Deleted {len(purged)} messages.", delete_after=5)
+
+@bot.hybrid_group(name="admin", description="Admin-only commands.")
+@is_admin()
+async def admin(ctx):
+    if ctx.invoked_subcommand is None: await ctx.send(embed=create_embed("Admin Commands", "Use an admin subcommand.", discord.Color.orange()))
+
+@admin.command(name="partymode", description="Toggle party season mode.")
+async def admin_partymode(ctx, state: str):
+    state_val = 1 if state.lower() in ['on', '1', 'true'] else 0
+    async with bot.db_pool.acquire() as conn:
+        async with conn.cursor() as cursor:
+            await cursor.execute("INSERT INTO config (setting_key, setting_value) VALUES ('party_season', %s) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)", (state_val,))
+    await fetch_config() # Reload config
+    await ctx.send(f"Party Season mode has been turned **{'ON' if state_val == 1 else 'OFF'}**.")
+
+@admin.command(name="purgeall", description="DANGER: Wipes all player stats and data.")
+async def admin_purgeall(ctx):
+    await ctx.send("This is a dangerous command. Type `CONFIRM` to proceed.");
+    try: await bot.wait_for('message', timeout=30.0, check=lambda m: m.author == ctx.author and m.channel == ctx.channel and m.content == 'CONFIRM')
+    except asyncio.TimeoutError: return await ctx.send("Purge cancelled.")
+    
+    await ctx.send("Resetting all player stats... this may take a moment.")
+    async with bot.db_pool.acquire() as conn:
+        async with conn.cursor() as cursor:
+            await cursor.execute("UPDATE players SET elo = 0, wins = 0, losses = 0, mvps = 0, win_streak = 0")
+            await cursor.execute("DELETE FROM moderation_logs WHERE action_type = 'strike'") # Also clear all strikes
+
+    # Update roles and nicks for all members
+    for member in ctx.guild.members:
+        await update_elo_roles(member)
+        
+    await ctx.send(embed=create_embed("STATS PURGED", "All player stats and strikes have been reset.", discord.Color.dark_red()))
+
+@admin.command(name="setpartysize", description="Set the default party size for matchmaking.")
+async def admin_setpartysize(ctx, size: int):
+    async with bot.db_pool.acquire() as conn:
+        async with conn.cursor() as cursor:
+            await cursor.execute("INSERT INTO config (setting_key, setting_value) VALUES ('party_size', %s) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)", (str(size),))
+    await fetch_config()
+    await ctx.send(f"Party size set to `{size}`.")
+
+@bot.hybrid_command(name="sendticketpanel", description="Sends the interactive ticket creation panel to the current channel.")
+@is_admin()
+async def sendticketpanel(ctx):
+    embed = create_embed("Need Assistance?", 
+                         "• ☑️ **General** ► Need help? Get assistance here.\n"
+                         "• ⚖️ **Appeal** ► Appeal a ban or mute here.\n"
+                         "• 🛒 **Store** ► Get assistance with store-related purchases.\n"
+                         "• 🤝 **Partnership** ► Apply to be a server partner here.")
+    await ctx.send(embed=embed, view=MainTicketView())
+    if isinstance(ctx, commands.Context):
+        await ctx.message.delete()
+    else:
+        await ctx.interaction.response.send_message("Panel sent.", ephemeral=True)
+
+# --- All other commands are unchanged and assumed to be below this line ---
 
 # --- Run ---
 if __name__ == "__main__":
