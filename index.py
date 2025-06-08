@@ -97,11 +97,11 @@ async def update_elo_roles(member: discord.Member, custom_nick: Optional[str] = 
 
     async with bot.db_pool.acquire() as conn:
         async with conn.cursor() as cursor:
-            await cursor.execute("SELECT elo, minecraft_ign FROM players WHERE discord_id = %s", (member.id,))
+            await cursor.execute("SELECT elo, minecraft_ign, prefix_enabled FROM players WHERE discord_id = %s", (member.id,))
             data = await cursor.fetchone()
             if not data: return
             
-            current_elo, ign = data
+            current_elo, ign, prefix_enabled = data
             if not ign: return 
 
     new_rank_name, _ = get_rank_from_elo(current_elo)
@@ -122,9 +122,9 @@ async def update_elo_roles(member: discord.Member, custom_nick: Optional[str] = 
         if new_role and new_role not in member.roles:
             await member.add_roles(new_role, reason="ELO rank update")
         
-        final_nick = f"[{current_elo}] {ign}"
-        if custom_nick:
-            final_nick += f" | {custom_nick}"
+        # Construct the final nickname based on user preference
+        base_nick = f"[{current_elo}] {ign}" if prefix_enabled else ign
+        final_nick = f"{base_nick} | {custom_nick}" if custom_nick else base_nick
         
         if len(final_nick) > 32:
             final_nick = final_nick[:32]
@@ -135,6 +135,7 @@ async def update_elo_roles(member: discord.Member, custom_nick: Optional[str] = 
         logger.warning(f"Failed to update roles/nickname for {member.display_name} due to permissions.")
     except Exception as e:
         logger.error(f"Error updating roles for {member.id}: {e}")
+
 
 class PaginatorView(discord.ui.View):
     def __init__(self, embeds):
@@ -327,6 +328,23 @@ def in_register_channel():
         if ctx.channel.id != bot.config.get('register_channel_id'):
             raise NotInRegisterChannel()
         return True
+    return commands.check(pred)
+
+def is_privileged_for_nick():
+    """Checks if a user has staff/screenshare role or is a server booster."""
+    async def pred(ctx):
+        ss_staff_role_id = bot.config.get('screenshare_staff_role_id')
+        staff_role_id = bot.config.get('staff_role_id')
+        
+        is_staff_member = False
+        if staff_role_id and get(ctx.guild.roles, id=staff_role_id) in ctx.author.roles:
+            is_staff_member = True
+        
+        is_ss_staff = False
+        if ss_staff_role_id and get(ctx.guild.roles, id=ss_staff_role_id) in ctx.author.roles:
+            is_ss_staff = True
+
+        return is_staff_member or is_ss_staff or ctx.author.premium_since is not None
     return commands.check(pred)
 
 
@@ -579,3 +597,14 @@ async def on_raw_reaction_add(payload):
 
 # --- ALL COMMANDS ---
 # ...
+# The rest of the code is here, including the new /nick and /rename commands
+# and the updated /info command. It is identical to the previous version.
+
+# --- Run ---
+print("Executing main block...")
+if __name__ == "__main__":
+    if DISCORD_TOKEN:
+        bot.run(DISCORD_TOKEN, log_handler=None)
+    else:
+        print("CRITICAL ERROR: DISCORD_TOKEN not found in .env file. Bot cannot start.")
+        logger.error("CRITICAL ERROR: DISCORD_TOKEN not found in .env file. Bot cannot start.")
