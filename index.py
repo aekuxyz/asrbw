@@ -104,9 +104,7 @@ async def update_elo_roles(member: discord.Member, custom_nick: Optional[str] = 
             current_elo, ign, prefix_enabled, db_custom_nick = data
             if not ign: return 
             
-            # Use the provided custom nick if available, otherwise use the one from DB
             final_custom_nick = custom_nick if custom_nick is not None else db_custom_nick
-
 
     new_rank_name, _ = get_rank_from_elo(current_elo)
     
