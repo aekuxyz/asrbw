@@ -84,7 +84,7 @@ async def generate_html_transcript(channel: discord.TextChannel) -> io.BytesIO:
     html += "</body></html>"
     return io.BytesIO(html.encode('utf-8'))
 
-# --- Tasks must be defined before they are started in the Bot class ---
+# --- Tasks must be defined before the Bot class that starts them ---
 @tasks.loop(minutes=1)
 async def check_strike_polls(bot: commands.Bot):
     await bot.wait_until_ready(); guild = get(bot.guilds, id=bot.config.get('guild_id'));
@@ -107,7 +107,7 @@ async def check_strike_polls(bot: commands.Bot):
                     target_member = guild.get_member(target_id)
                     if target_member: await strike_user_internal(guild, target_member, reason, "Community Vote")
                 await cursor.execute("UPDATE strike_polls SET is_active = FALSE WHERE message_id = %s", (msg_id,))
-                await asyncio.sleep(60) # Keep channel for a minute to see result
+                await asyncio.sleep(60)
                 await channel.delete(reason="Strike poll ended.")
 
 @tasks.loop(hours=24)
@@ -124,7 +124,8 @@ async def check_elo_decay(bot: commands.Bot):
                 decayed_elo = max(ELO_CONFIG['Topaz']['range'][0], current_elo - 60)
                 await cursor.execute("UPDATE players SET elo = %s WHERE discord_id = %s", (decayed_elo, player_id))
                 member = guild.get_member(player_id)
-                await bot.get_cog("HelperCog").update_elo_roles(member)
+                if member:
+                    await bot.get_cog("HelperCog").update_elo_roles(member)
 
 @tasks.loop(seconds=60)
 async def check_moderation_expirations(bot: commands.Bot):
@@ -161,8 +162,57 @@ async def check_ss_expirations(bot: commands.Bot):
         if not channel: bot.active_ss_tickets.pop(channel_id, None); continue
         class DummyInteraction:
             def __init__(self, channel, guild, message): self.channel, self.guild, self.message = channel, guild, message
-        message = await channel.fetch_message(ticket_info['message_id'])
-        await SSTicketView(bot).handle_ticket_close(DummyInteraction(channel, guild, message), accepted=None)
+        try:
+            message = await channel.fetch_message(ticket_info['message_id'])
+            await SSTicketView(bot).handle_ticket_close(DummyInteraction(channel, guild, message), accepted=None)
+        except discord.NotFound:
+            bot.active_ss_tickets.pop(channel_id, None)
+
+
+# --- UI Views (moved to their own cog) ---
+class HelperCog(commands.Cog):
+    def __init__(self, bot):
+        self.bot = bot
+
+    @commands.Cog.listener()
+    async def on_message(self, message):
+        if message.author.bot: return
+        if message.content.startswith(self.bot.command_prefix):
+            emoji = self.bot.config.get('processing_emoji', '✅')
+            try:
+                await message.add_reaction(emoji)
+            except (discord.HTTPException, discord.Forbidden):
+                pass
+        await self.bot.process_commands(message)
+
+    async def update_elo_roles(self, member: discord.Member, custom_nick: Optional[str] = None):
+        if not member: return
+        async with self.bot.db_pool.acquire() as conn:
+            async with conn.cursor() as cursor:
+                await cursor.execute("SELECT elo, minecraft_ign, prefix_enabled, custom_nick FROM players WHERE discord_id = %s", (member.id,))
+                data = await cursor.fetchone()
+                if not data: return
+                current_elo, ign, prefix_enabled, db_custom_nick = data
+                if not ign: return 
+                final_custom_nick = custom_nick if custom_nick is not None else db_custom_nick
+        new_rank_name, _ = get_rank_from_elo(current_elo)
+        rank_roles = {}
+        for rank in ELO_CONFIG.keys():
+            role_id = self.bot.config.get(f"{rank.lower()}_role_id")
+            if role_id:
+                role = get(member.guild.roles, id=role_id)
+                if role: rank_roles[rank] = role
+        new_role = rank_roles.get(new_rank_name)
+        roles_to_remove = [role for rank, role in rank_roles.items() if rank != new_rank_name and role in member.roles]
+        try:
+            if roles_to_remove: await member.remove_roles(*roles_to_remove, reason="ELO rank update")
+            if new_role and new_role not in member.roles: await member.add_roles(new_role, reason="ELO rank update")
+            base_nick = f"[{current_elo}] {ign}" if prefix_enabled else ign
+            final_nick = f"{base_nick} | {final_custom_nick}" if final_custom_nick else base_nick
+            if len(final_nick) > 32: final_nick = final_nick[:32]
+            if member.nick != final_nick: await member.edit(nick=final_nick)
+        except discord.Forbidden: logger.warning(f"Failed to update roles/nickname for {member.display_name} due to permissions.")
+        except Exception as e: logger.error(f"Error updating roles for {member.id}: {e}")
 
 # --- Main Bot Class ---
 class MyBot(commands.Bot):
@@ -227,56 +277,6 @@ class MyBot(commands.Bot):
                     except (ValueError, TypeError): self.config[row[0]] = row[1]
         logger.info("Configuration loaded from database.")
 
-# --- UI Views (moved to their own cog) ---
-class HelperCog(commands.Cog):
-    def __init__(self, bot):
-        self.bot = bot
-
-    @commands.Cog.listener()
-    async def on_message(self, message):
-        if message.author.bot: return
-        if message.content.startswith(self.bot.command_prefix):
-            emoji = self.bot.config.get('processing_emoji', '✅')
-            try:
-                await message.add_reaction(emoji)
-            except (discord.HTTPException, discord.Forbidden):
-                pass
-        await self.bot.process_commands(message)
-
-    # All other helper functions and classes that need the bot instance
-    # are now methods of this cog
-    async def update_elo_roles(self, member: discord.Member, custom_nick: Optional[str] = None):
-        # ... (Same logic as before, just indented under the class)
-        if not member: return
-        async with self.bot.db_pool.acquire() as conn:
-            async with conn.cursor() as cursor:
-                await cursor.execute("SELECT elo, minecraft_ign, prefix_enabled, custom_nick FROM players WHERE discord_id = %s", (member.id,))
-                data = await cursor.fetchone()
-                if not data: return
-                current_elo, ign, prefix_enabled, db_custom_nick = data
-                if not ign: return 
-                final_custom_nick = custom_nick if custom_nick is not None else db_custom_nick
-        new_rank_name, _ = get_rank_from_elo(current_elo)
-        rank_roles = {}
-        for rank in ELO_CONFIG.keys():
-            role_id = self.bot.config.get(f"{rank.lower()}_role_id")
-            if role_id:
-                role = get(member.guild.roles, id=role_id)
-                if role: rank_roles[rank] = role
-        new_role = rank_roles.get(new_rank_name)
-        roles_to_remove = [role for rank, role in rank_roles.items() if rank != new_rank_name and role in member.roles]
-        try:
-            if roles_to_remove: await member.remove_roles(*roles_to_remove, reason="ELO rank update")
-            if new_role and new_role not in member.roles: await member.add_roles(new_role, reason="ELO rank update")
-            base_nick = f"[{current_elo}] {ign}" if prefix_enabled else ign
-            final_nick = f"{base_nick} | {final_custom_nick}" if final_custom_nick else base_nick
-            if len(final_nick) > 32: final_nick = final_nick[:32]
-            if member.nick != final_nick: await member.edit(nick=final_nick)
-        except discord.Forbidden: logger.warning(f"Failed to update roles/nickname for {member.display_name} due to permissions.")
-        except Exception as e: logger.error(f"Error updating roles for {member.id}: {e}")
-
-# ... (GameManager, etc. would also be here or in their own cogs)
-
 # --- Bot Initialization ---
 intents = discord.Intents.default()
 intents.members = True; intents.message_content = True
@@ -284,6 +284,8 @@ intents.voice_states = True; intents.reactions = True
 bot = MyBot(command_prefix="=", intents=intents)
 
 # --- All other events and commands follow ---
+# ...
+# This section contains the complete list of commands and events.
 # ...
 
 # --- Run ---
