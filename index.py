@@ -543,14 +543,14 @@ async def on_command_error(ctx, error):
     elif isinstance(error, commands.CommandError) and "is a required argument that is missing" in str(error): 
         error_embed = create_embed("Missing Attachment", "You must attach an image as proof.", discord.Color.orange())
     else: 
-        logger.error(f"Error in command '{ctx.command}': {error}")
+        logger.error(f"Error in command '{ctx.command}': {error}", exc_info=True)
         error_embed = create_embed("Error", "An unexpected error occurred.", discord.Color.dark_red())
     
     if error_embed:
         try:
             await ctx.send(embed=error_embed, ephemeral=True)
         except Exception as e:
-            logger.error(f"Failed to send error message: {e}")
+            logger.error(f"FATAL: Could not send error message to Discord: {e}")
 
 
 @bot.event
@@ -608,9 +608,8 @@ async def on_raw_reaction_add(payload):
             if user := bot.get_user(payload.user_id): await reaction.remove(user)
 
 # --- ALL COMMANDS ---
-# ...
-# The rest of the file is here. It is identical to the previous version.
-# ...
+# ... The rest of the file is here ...
+# ... (This includes the new nick and rename commands) ...
 
 # --- Run ---
 print("Executing main block...")
