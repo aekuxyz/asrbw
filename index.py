@@ -233,16 +233,6 @@ class MyBot(commands.Bot):
         self.ready_once = True
         print("Bot is fully ready and online.")
 
-    async def on_message(self, message):
-        if message.author.bot: return
-        if message.content.startswith(self.command_prefix):
-            emoji = self.config.get('processing_emoji', '✅')
-            try:
-                await message.add_reaction(emoji)
-            except (discord.HTTPException, discord.Forbidden):
-                pass
-        await self.process_commands(message)
-
     async def fetch_and_load_config(self):
         async with self.db_pool.acquire() as conn:
             async with conn.cursor() as cursor:
@@ -253,10 +243,13 @@ class MyBot(commands.Bot):
                     except (ValueError, TypeError): self.config[row[0]] = row[1]
         logger.info("Configuration loaded from database.")
 
-# Initialize the bot
+# --- Bot Initialization ---
+intents = discord.Intents.default()
+intents.members = True; intents.message_content = True
+intents.voice_states = True; intents.reactions = True
 bot = MyBot(command_prefix="=", intents=intents)
 
-# --- Events outside the class ---
+# --- Events and Tasks ---
 @bot.listen()
 async def on_command_error(ctx: commands.Context, error: commands.CommandError):
     # This handler now specifically listens for prefix command errors
@@ -265,7 +258,6 @@ async def on_command_error(ctx: commands.Context, error: commands.CommandError):
         try: await ctx.message.remove_reaction(emoji, bot.user)
         except (discord.Forbidden, discord.NotFound): pass
     
-    # ... The rest of the error handling logic...
     if isinstance(error, commands.CommandNotFound): return
 
     error_embed = None
@@ -299,7 +291,7 @@ async def on_app_command_error(interaction: discord.Interaction, error: discord.
 
 # ... All other events and tasks ...
 
-# --- ALL COMMANDS (Re-written as Hybrid) ---
+# --- ALL COMMANDS ---
 # ...
 # This section contains the complete list of commands, now using the hybrid decorator
 # ...
@@ -316,4 +308,3 @@ if __name__ == "__main__":
         except Exception as e:
             logger.critical(f"Failed to run the bot: {e}")
             print(f"Failed to run the bot: {e}")
-
