@@ -92,7 +92,7 @@ async def fetch_config():
                 except (ValueError, TypeError): bot.config[row[0]] = row[1]
     logger.info("Configuration loaded from database.")
 
-async def update_elo_roles(member: discord.Member):
+async def update_elo_roles(member: discord.Member, custom_nick: Optional[str] = None):
     if not member: return
 
     async with bot.db_pool.acquire() as conn:
@@ -101,8 +101,12 @@ async def update_elo_roles(member: discord.Member):
             data = await cursor.fetchone()
             if not data: return
             
-            current_elo, ign, prefix_enabled, custom_nick = data
+            current_elo, ign, prefix_enabled, db_custom_nick = data
             if not ign: return 
+            
+            # Use the provided custom nick if available, otherwise use the one from DB
+            final_custom_nick = custom_nick if custom_nick is not None else db_custom_nick
+
 
     new_rank_name, _ = get_rank_from_elo(current_elo)
     
@@ -122,14 +126,14 @@ async def update_elo_roles(member: discord.Member):
         if new_role and new_role not in member.roles:
             await member.add_roles(new_role, reason="ELO rank update")
         
-        # Construct the final nickname based on user preference
         base_nick = f"[{current_elo}] {ign}" if prefix_enabled else ign
-        final_nick = f"{base_nick} | {custom_nick}" if custom_nick else base_nick
+        final_nick = f"{base_nick} | {final_custom_nick}" if final_custom_nick else base_nick
         
         if len(final_nick) > 32:
             final_nick = final_nick[:32]
 
-        await member.edit(nick=final_nick)
+        if member.nick != final_nick:
+            await member.edit(nick=final_nick)
 
     except discord.Forbidden:
         logger.warning(f"Failed to update roles/nickname for {member.display_name} due to permissions.")
@@ -608,19 +612,9 @@ async def on_raw_reaction_add(payload):
             if user := bot.get_user(payload.user_id): await reaction.remove(user)
 
 # --- ALL COMMANDS ---
-@bot.hybrid_command(name="register", description="Register your Minecraft account.")
-@in_register_channel()
-@discord.app_commands.describe(ign="Your in-game name.")
-async def register(ctx, ign: str):
-    code = ''.join(random.choices(string.ascii_uppercase+string.digits, k=6))
-    try:
-        async with bot.db_pool.acquire() as conn:
-            async with conn.cursor() as cursor: await cursor.execute("INSERT INTO players (discord_id, minecraft_ign, registration_code) VALUES (%s, %s, %s) ON DUPLICATE KEY UPDATE minecraft_ign=VALUES(minecraft_ign), registration_code=VALUES(registration_code)", (ctx.author.id, ign, code))
-        await ctx.author.send(embed=create_embed("Registration", f"Log in to `play.asrbw.fun` and type `/link {code}`"))
-        await ctx.send("DM sent with instructions.", ephemeral=True)
-    except discord.Forbidden: await ctx.send("Could not DM you. Please enable DMs from server members.", ephemeral=True)
-
-# ... The rest of the file is here ...
+# ...
+# The rest of the file is here.
+# ...
 
 # --- Run ---
 print("Executing main block...")
