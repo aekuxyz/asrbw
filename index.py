@@ -11,7 +11,7 @@ import string
 import random
 from datetime import datetime, timedelta
 import re
-from PIL import Image, ImageDraw, ImageFont, ImageOps
+from PIL import Image, ImageDraw, ImageFont, ImageOps, ImageFilter
 import io
 import aiohttp
 import math
@@ -704,29 +704,45 @@ async def info(ctx, member: Optional[discord.Member] = None):
             else:
                 logger.error(f"Failed to get skin from Visage for UUID {uuid}, status: {resp.status}")
 
-    card = Image.new('RGB', (600, 450), color='#2F3136')
+    card = Image.new('RGB', (600, 450), color='#111111')
+    
+    # Create the glass panel
+    glass = Image.new('RGBA', (560, 410), (0,0,0,0))
+    draw_glass = ImageDraw.Draw(glass)
+    draw_glass.rounded_rectangle((0,0,560,410), radius=20, fill=(255,255,255,50)) # semi-transparent white
+    
+    # Blur the background area and paste the glass
+    bg_crop = card.crop((20,20,580,430))
+    bg_crop = bg_crop.filter(ImageFilter.GaussianBlur(5))
+    card.paste(bg_crop, (20,20))
+    card.paste(glass, (20,20), glass)
+    
+    # Draw border for the glass panel
+    draw = ImageDraw.Draw(card)
+    draw.rounded_rectangle((20,20,580,430), radius=20, outline=(255,255,255,80), width=2)
+
     if skin_data:
         skin = Image.open(io.BytesIO(skin_data)).resize((180, 420), Image.Resampling.LANCZOS)
-        card.paste(skin, (20, 15), skin)
+        card.paste(skin, (35, 15), skin)
 
-    draw = ImageDraw.Draw(card);
     try:
-        title_f = ImageFont.truetype("verdana.ttf", 48)
-        stat_f = ImageFont.truetype("verdanab.ttf", 32)
-        label_f = ImageFont.truetype("verdana.ttf", 26)
-        footer_f = ImageFont.truetype("verdanab.ttf", 20)
+        title_f = ImageFont.truetype("Poppins-Bold.ttf", 48)
+        stat_f = ImageFont.truetype("Poppins-Bold.ttf", 32)
+        label_f = ImageFont.truetype("Poppins-Regular.ttf", 26)
+        footer_f = ImageFont.truetype("Poppins-Bold.ttf", 20)
     except IOError:
+        logger.warning("Poppins font not found. Falling back to default font.")
         title_f=ImageFont.load_default(); stat_f=ImageFont.load_default(); label_f=ImageFont.load_default(); footer_f = ImageFont.load_default()
     
-    draw.text((230, 30), ign, fill='white', font=title_f)
-    draw.line([(230, 90), (560, 90)], fill='#99AAB5', width=2)
-    stats = {"ELO": elo, "Wins": wins, "Losses": losses, "W/L Ratio": wlr, "MVPs": mvps, "Streak": streak}; y = 120
+    draw.text((240, 45), ign, fill='white', font=title_f)
+    draw.line([(240, 95), (560, 95)], fill='#99AAB5', width=1)
+    stats = {"ELO": elo, "Wins": wins, "Losses": losses, "W/L Ratio": wlr, "MVPs": mvps, "Streak": streak}; y = 125
     for label, value in stats.items():
-        draw.text((250, y), label, fill='#99AAB5', font=label_f)
-        draw.text((550, y-2), str(value), fill='white', font=stat_f, anchor="ra")
+        draw.text((260, y), label, fill='#bbbbbb', font=label_f)
+        draw.text((540, y-2), str(value), fill='white', font=stat_f, anchor="ra")
         y += 45
     
-    draw.text((580, 425), ".gg/asianrbw", fill='#72767d', font=footer_f, anchor="rs")
+    draw.text((570, 420), ".gg/asianrbw", fill='#72767d', font=footer_f, anchor="rs")
     
     buffer = io.BytesIO(); card.save(buffer, 'PNG'); buffer.seek(0)
     await ctx.send(file=discord.File(buffer, f"{ign}_stats.png"))
