@@ -747,8 +747,417 @@ async def info(ctx, member: Optional[discord.Member] = None):
     buffer = io.BytesIO(); card.save(buffer, 'PNG'); buffer.seek(0)
     await ctx.send(file=discord.File(buffer, f"{ign}_stats.png"))
 
-# --- ALL OTHER COMMANDS AND GROUPS (history, lb, admin, stats, scoring, tickets, polls) ARE UNCHANGED ---
-# ... (The rest of the file is identical to the previous version)
+@bot.hybrid_command(aliases=['h'], name="history", description="View a user's moderation history.")
+@is_staff()
+async def history(ctx, member: discord.Member):
+    async with bot.db_pool.acquire() as conn:
+        async with conn.cursor() as cursor:
+            await cursor.execute("SELECT log_id, moderator_id, action_type, reason, created_at, expires_at, is_active FROM moderation_logs WHERE target_id = %s ORDER BY created_at DESC", (member.id,))
+            logs = await cursor.fetchall()
+    if not logs: return await ctx.send(embed=create_embed("Clean Record", f"{member.mention} has no moderation history."))
+    embeds = []
+    items_per_page = 5
+    for i in range(0, len(logs), items_per_page):
+        page_logs = logs[i:i+items_per_page]
+        embed = create_embed(f"History for {member.display_name}", f"Page {i//items_per_page + 1}/{math.ceil(len(logs)/items_per_page)}")
+        for log_id, mod_id, type, reason, ts, exp, active in page_logs:
+            mod = get(ctx.guild.members, id=mod_id) or "Unknown"; status = "Active" if active else "Inactive/Expired"
+            field_val = f"**Reason:** {reason or 'None'}\n**Moderator:** {mod.mention}\n**Status:** {status}"
+            embed.add_field(name=f"#{log_id} - {type.capitalize()}", value=field_val, inline=False)
+        embeds.append(embed)
+    await ctx.send(embed=embeds[0], view=PaginatorView(embeds))
+
+@bot.hybrid_command(aliases=['lb'], name="leaderboard", description="View leaderboards for different stats.")
+@discord.app_commands.describe(category="The leaderboard category to view.")
+async def leaderboard(ctx, category: str = "elo"):
+    valid_cats = {'elo': 'elo', 'wins': 'wins', 'losses': 'losses', 'mvps': 'mvps', 'streak': 'win_streak'}
+    if category.lower() not in valid_cats: return await ctx.send(f"Invalid category. Use: {', '.join(valid_cats.keys())}")
+    db_col = valid_cats[category.lower()]
+    async with bot.db_pool.acquire() as conn:
+        async with conn.cursor() as cursor:
+            await cursor.execute(f"SELECT discord_id, {db_col} FROM players ORDER BY {db_col} DESC LIMIT 100")
+            data = await cursor.fetchall()
+    if not data: return await ctx.send("No data for this leaderboard yet.")
+    embeds = []
+    items_per_page = 10
+    for i in range(0, len(data), items_per_page):
+        page_data = data[i:i+items_per_page]
+        embed = create_embed(f"Leaderboard - {category.capitalize()}", f"Page {i//items_per_page + 1}/{math.ceil(len(data)/items_per_page)}")
+        description = ""
+        for rank, (player_id, value) in enumerate(page_data, start=i+1):
+            player = get(ctx.guild.members, id=player_id)
+            description += f"`{rank}.` {player.mention if player else 'Unknown User'}: **{value}**\n"
+        embed.description = description
+        embeds.append(embed)
+    await ctx.send(embed=embeds[0], view=PaginatorView(embeds))
+
+@bot.hybrid_command(name="purgechat", description="Deletes a specified number of messages.")
+@commands.has_permissions(manage_messages=True)
+async def purge_chat(ctx, limit: int = 100):
+    await ctx.defer(ephemeral=True)
+    purged = await ctx.channel.purge(limit=limit)
+    await ctx.send(f"Deleted {len(purged)} messages.", delete_after=5)
+
+@bot.hybrid_group(name="admin", description="Admin-only commands.")
+@is_admin()
+async def admin(ctx):
+    if ctx.invoked_subcommand is None: await ctx.send(embed=create_embed("Admin Commands", "Use an admin subcommand.", discord.Color.orange()))
+
+@admin.command(name="partymode", description="Toggle party season mode.")
+async def admin_partymode(ctx, state: str):
+    state_val = 1 if state.lower() in ['on', '1', 'true'] else 0
+    async with bot.db_pool.acquire() as conn:
+        async with conn.cursor() as cursor:
+            await cursor.execute("INSERT INTO config (setting_key, setting_value) VALUES ('party_season', %s) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)", (state_val,))
+    await fetch_config() # Reload config
+    await ctx.send(f"Party Season mode has been turned **{'ON' if state_val == 1 else 'OFF'}**.")
+
+@admin.command(name="purgeall", description="DANGER: Wipes all player stats and data.")
+async def admin_purgeall(ctx):
+    await ctx.send("This is a dangerous command. Type `CONFIRM` to proceed.");
+    try: await bot.wait_for('message', timeout=30.0, check=lambda m: m.author == ctx.author and m.channel == ctx.channel and m.content == 'CONFIRM')
+    except asyncio.TimeoutError: return await ctx.send("Purge cancelled.")
+    
+    await ctx.send("Resetting all player stats... this may take a moment.")
+    async with bot.db_pool.acquire() as conn:
+        async with conn.cursor() as cursor:
+            await cursor.execute("UPDATE players SET elo = 0, wins = 0, losses = 0, mvps = 0, win_streak = 0")
+            await cursor.execute("DELETE FROM moderation_logs WHERE action_type = 'strike'") # Also clear all strikes
+
+    # Update roles and nicks for all members
+    for member in ctx.guild.members:
+        await update_elo_roles(member)
+        
+    await ctx.send(embed=create_embed("STATS PURGED", "All player stats and strikes have been reset.", discord.Color.dark_red()))
+
+@admin.command(name="setpartysize", description="Set the default party size for matchmaking.")
+async def admin_setpartysize(ctx, size: int):
+    async with bot.db_pool.acquire() as conn:
+        async with conn.cursor() as cursor:
+            await cursor.execute("INSERT INTO config (setting_key, setting_value) VALUES ('party_size', %s) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)", (str(size),))
+    await fetch_config()
+    await ctx.send(f"Party size set to `{size}`.")
+
+@bot.hybrid_command(name="wins", description="Add wins to a user.")
+@is_admin()
+async def wins(ctx, member: discord.Member, amount: int):
+    async with bot.db_pool.acquire() as conn:
+        async with conn.cursor() as cursor: await cursor.execute("UPDATE players SET wins = wins + %s, win_streak = win_streak + %s, elo = elo + %s WHERE discord_id = %s", (amount, amount, 20 * amount, member.id))
+    await update_elo_roles(member)
+    await ctx.send(f"Added {amount} wins to {member.mention}.")
+    
+@bot.hybrid_command(name="losses", description="Add losses to a user.")
+@is_admin()
+async def losses(ctx, member: discord.Member, amount: int):
+    async with bot.db_pool.acquire() as conn:
+        async with conn.cursor() as cursor: await cursor.execute("UPDATE players SET losses = losses + %s, win_streak = 0, elo = elo - %s WHERE discord_id = %s", (amount, 10 * amount, member.id))
+    await update_elo_roles(member)
+    await ctx.send(f"Added {amount} losses to {member.mention}.")
+
+@bot.hybrid_command(name="elochange", description="Change a user's ELO by a specific amount.")
+@is_admin()
+async def elochange(ctx, member: discord.Member, amount: int):
+    async with bot.db_pool.acquire() as conn:
+        async with conn.cursor() as cursor: await cursor.execute("UPDATE players SET elo = elo + %s WHERE discord_id = %s", (amount, member.id))
+    await update_elo_roles(member)
+    await ctx.send(f"Changed {member.mention}'s ELO by {amount}.")
+
+@bot.hybrid_command(name="elo", description="Set a user's ELO to a specific value.")
+@is_admin()
+async def elo(ctx, member: discord.Member, amount: int):
+    async with bot.db_pool.acquire() as conn:
+        async with conn.cursor() as cursor: await cursor.execute("UPDATE players SET elo = %s WHERE discord_id = %s", (amount, member.id))
+    await update_elo_roles(member)
+    await ctx.send(f"Set {member.mention}'s ELO to {amount}.")
+
+@bot.hybrid_command(name="mvps", description="Add MVPs to a user.")
+@is_admin()
+async def mvps(ctx, member: discord.Member, amount: int):
+    async with bot.db_pool.acquire() as conn:
+        async with conn.cursor() as cursor: await cursor.execute("UPDATE players SET mvps = mvps + %s WHERE discord_id = %s", (amount, member.id))
+    await ctx.send(f"Added {amount} MVPs to {member.mention}.")
+
+async def create_results_image(team1_players, team2_players, winning_team_num, mvp):
+    card = Image.new('RGB', (800, 400), color='#1a1a1a')
+    draw = ImageDraw.Draw(card)
+    try: font = ImageFont.truetype("arial.ttf", 24)
+    except: font = ImageFont.load_default()
+    t1_color = '#57F287' if winning_team_num == 1 else '#80848E'
+    draw.text((150, 30), "Team 1", fill=t1_color, font=font, anchor="ms")
+    for i, p in enumerate(team1_players):
+        name = f"👑 {p['ign']}" if p['id'] == mvp else p['ign']
+        draw.text((150, 80 + i*40), name, fill='white', font=font, anchor="ms")
+    t2_color = '#57F287' if winning_team_num == 2 else '#80848E'
+    draw.text((650, 30), "Team 2", fill=t2_color, font=font, anchor="ms")
+    for i, p in enumerate(team2_players):
+        name = f"👑 {p['ign']}" if p['id'] == mvp else p['ign']
+        draw.text((650, 80 + i*40), name, fill='white', font=font, anchor="ms")
+    buffer = io.BytesIO(); card.save(buffer, 'PNG'); buffer.seek(0)
+    return buffer
+
+@bot.hybrid_command(name="score", description="Score a completed game.")
+@is_admin()
+async def score(ctx, game_id: int, winning_team_num: int, mvp: discord.Member):
+    async with bot.db_pool.acquire() as conn:
+        async with conn.cursor() as cursor:
+            await cursor.execute("SELECT is_scored, is_undone FROM games WHERE game_id = %s", (game_id,))
+            status = await cursor.fetchone()
+            if not status or status[0]: return await ctx.send("Game not found or already scored.", ephemeral=True)
+            if status[1]: return await ctx.send("This game was undone. Use `=rescore` to score it again.", ephemeral=True)
+            await cursor.execute("SELECT p.discord_id, p.minecraft_ign, p.elo, gp.team_id FROM players p JOIN game_participants gp ON p.discord_id = gp.player_id WHERE gp.game_id = %s", (game_id,))
+            players_data = await cursor.fetchall()
+            t1, t2, elo_changes = [], [], []
+            for p_id, ign, elo, team_id in players_data:
+                player_info = {'id': p_id, 'ign': ign, 'elo': elo, 'rank': get_rank_from_elo(elo)}
+                if team_id == 1: t1.append(player_info)
+                else: t2.append(player_info)
+                _, rank_data = get_rank_from_elo(elo); elo_change = 0; is_winner = (team_id == winning_team_num)
+                if is_winner:
+                    elo_change += rank_data['win']
+                    if p_id == mvp.id: elo_change += rank_data['mvp']
+                    await cursor.execute("UPDATE players SET wins = wins + 1, win_streak = win_streak + 1, elo = elo + %s, last_game_played_at = NOW() WHERE discord_id = %s", (elo_change, p_id))
+                else:
+                    elo_change += rank_data['loss']
+                    await cursor.execute("UPDATE players SET losses = losses + 1, win_streak = 0, elo = elo + %s, last_game_played_at = NOW() WHERE discord_id = %s", (elo_change, p_id))
+                elo_changes.append((elo_change, game_id, p_id))
+                await update_elo_roles(get(ctx.guild.members, id=p_id))
+
+            await cursor.executemany("UPDATE game_participants SET elo_change = %s WHERE game_id = %s AND player_id = %s", elo_changes)
+            await cursor.execute("UPDATE games SET is_scored = TRUE, is_undone = FALSE, winning_team = %s, mvp_discord_id = %s, scored_at = NOW(), scored_by_id = %s WHERE game_id = %s", (winning_team_num, mvp.id, ctx.author.id, game_id))
+    results_channel = get(ctx.guild.channels, id=bot.config.get('games_results_channel_id'))
+    if results_channel:
+        img_buffer = await create_results_image(t1, t2, winning_team_num, mvp.id)
+        await results_channel.send(file=discord.File(img_buffer, f"game_{game_id}_results.png"))
+    await ctx.send(f"Game {game_id} has been scored.")
+
+@bot.hybrid_command(name="undo", description="Undo a scored game, reverting all stats.")
+@is_admin()
+async def undo(ctx, game_id: int, *, reason: str):
+    async with bot.db_pool.acquire() as conn:
+        async with conn.cursor() as cursor:
+            await cursor.execute("SELECT is_scored, is_undone, winning_team, mvp_discord_id FROM games WHERE game_id = %s", (game_id,))
+            status = await cursor.fetchone()
+            if not status or not status[0]: return await ctx.send("Game not found or was not scored.", ephemeral=True)
+            if status[1]: return await ctx.send("This game has already been undone.", ephemeral=True)
+            is_scored, is_undone, winning_team, mvp_id = status
+            await cursor.execute("SELECT player_id, team_id, elo_change FROM game_participants WHERE game_id = %s", (game_id,))
+            participants = await cursor.fetchall()
+            for p_id, team_id, elo_change in participants:
+                is_winner = (team_id == winning_team)
+                if is_winner:
+                    await cursor.execute("UPDATE players SET wins = wins - 1, win_streak = win_streak - 1, elo = elo - %s WHERE discord_id = %s", (elo_change, p_id))
+                else:
+                    await cursor.execute("UPDATE players SET losses = losses - 1, elo = elo - %s WHERE discord_id = %s", (elo_change, p_id))
+                await update_elo_roles(get(ctx.guild.members, id=p_id))
+            await cursor.execute("UPDATE games SET is_scored = FALSE, is_undone = TRUE WHERE game_id = %s", (game_id,))
+    await ctx.send(embed=create_embed("Game Undone", f"Game `{game_id}` has been undone. Reason: {reason}", discord.Color.orange()))
+
+@bot.hybrid_command(name="rescore", description="Rescore a game with a new outcome.")
+@is_admin()
+async def rescore(ctx, game_id: int, winning_team_num: int, mvp: discord.Member):
+    async with bot.db_pool.acquire() as conn:
+        async with conn.cursor() as cursor:
+            await cursor.execute("SELECT is_scored FROM games WHERE game_id = %s", (game_id,))
+            status = await cursor.fetchone()
+            if status and status[0]: await undo.callback(ctx, game_id=game_id, reason="Rescoring")
+    await score.callback(ctx, game_id=game_id, winning_team_num=winning_team_num, mvp=mvp)
+    await ctx.send(f"Game `{game_id}` has been rescored.")
+
+@bot.hybrid_command(name="sendticketpanel", description="Sends the interactive ticket creation panel to the current channel.")
+@is_admin()
+async def sendticketpanel(ctx):
+    embed = create_embed("Need Assistance?", 
+                         "• ☑️ **General** ► Need help? Get assistance here.\n"
+                         "• ⚖️ **Appeal** ► Appeal a ban or mute here.\n"
+                         "• 🛒 **Store** ► Get assistance with store-related purchases.\n"
+                         "• 🤝 **Partnership** ► Apply to be a server partner here.")
+    await ctx.send(embed=embed, view=MainTicketView())
+    if isinstance(ctx, commands.Context):
+        await ctx.message.delete()
+    else:
+        await ctx.interaction.response.send_message("Panel sent.", ephemeral=True)
+
+async def is_ticket_channel(ctx):
+    async with bot.db_pool.acquire() as conn:
+        async with conn.cursor() as cursor: await cursor.execute("SELECT 1 FROM tickets WHERE channel_id = %s", (ctx.channel.id,)); return await cursor.fetchone() is not None
+
+@bot.hybrid_command(name="add", description="Add a user or role to a ticket.")
+@commands.check(is_ticket_channel)
+async def add_to_ticket(ctx, target: Union[discord.Member, discord.Role]): await ctx.channel.set_permissions(target, read_messages=True, send_messages=True); await ctx.send(embed=create_embed("Added", f"{target.mention} added to ticket.", discord.Color.green()))
+
+@bot.hybrid_command(name="remove", description="Remove a user or role from a ticket.")
+@commands.check(is_ticket_channel)
+async def remove_from_ticket(ctx, target: Union[discord.Member, discord.Role]): await ctx.channel.set_permissions(target, overwrite=None); await ctx.send(embed=create_embed("Removed", f"{target.mention} removed from ticket.", discord.Color.orange()))
+
+@bot.hybrid_command(name="close", description="Close the current ticket.")
+async def close_ticket(ctx, *, reason: str = "No reason provided."):
+    is_ss_ticket = ctx.channel.name.startswith('ss-')
+    is_normal_ticket = await is_ticket_channel(ctx)
+    if not is_ss_ticket and not is_normal_ticket: return await ctx.send("This is not a ticket channel.", ephemeral=True)
+    
+    await ctx.send(embed=create_embed("Ticket Closing", "This ticket will be logged and closed in 10 seconds...", discord.Color.orange()))
+    transcript = await generate_html_transcript(ctx.channel)
+    
+    # Determine the correct log channel
+    if is_ss_ticket:
+        log_channel_id = bot.config.get('screenshare_log_channel_id')
+    else:
+        log_channel_id = bot.config.get('ticket_log_channel_id')
+        
+    await asyncio.sleep(10)
+    await ctx.channel.delete(reason=f"Closed by {ctx.author} for: {reason}")
+    
+    log_channel = get(ctx.guild.channels, id=log_channel_id)
+    if log_channel:
+        embed = create_embed("Ticket Closed", f"Ticket `#{ctx.channel.name}` was closed by {ctx.author.mention}.")
+        embed.add_field(name="Reason", value=reason)
+        await log_channel.send(embed=embed, file=discord.File(transcript, f"transcript-{ctx.channel.name}.html"))
+
+@bot.hybrid_command(name="ss", description="Request a screenshare for a user.")
+@discord.app_commands.describe(target="The user to screenshare.", reason="The reason for the request.", proof="Image proof of cheating.")
+async def ss(ctx, target: discord.Member, reason: str, proof: discord.Attachment):
+    frozen_role = get(ctx.guild.roles, id=bot.config.get('frozen_role_id'))
+    ss_staff_role = get(ctx.guild.roles, id=bot.config.get('screenshare_staff_role_id'))
+    category = get(ctx.guild.categories, id=bot.config.get('screenshare_category_id', bot.config.get('ticket_category_id')))
+    if not all([frozen_role, ss_staff_role, category]): return await ctx.send(embed=create_embed("Error", "Screenshare system is not fully configured.", discord.Color.red()), ephemeral=True)
+    if frozen_role in target.roles: return await ctx.send(embed=create_embed("Error", f"{target.mention} is already frozen.", discord.Color.orange()), ephemeral=True)
+    await target.add_roles(frozen_role, reason=f"SS Request by {ctx.author}")
+    overwrites = {ctx.guild.default_role: discord.PermissionOverwrite(read_messages=False), ctx.author: discord.PermissionOverwrite(read_messages=True), target: discord.PermissionOverwrite(read_messages=True), ss_staff_role: discord.PermissionOverwrite(read_messages=True)}
+    channel = await category.create_text_channel(f"ss-{target.name}", overwrites=overwrites)
+    embed = create_embed("Screenshare Request", f"A request has been opened by {ctx.author.mention} for {target.mention}.")
+    embed.add_field(name="Reason", value=reason, inline=False).set_image(url=proof.url)
+    msg = await channel.send(content=f"{ss_staff_role.mention}, a new SS request requires attention.", embed=embed, view=SSTicketView())
+    bot.active_ss_tickets[channel.id] = {'message_id': msg.id, 'target_id': target.id, 'requester_id': ctx.author.id, 'created_at': datetime.utcnow()}
+    await ctx.send(embed=create_embed("Request Created", f"Screenshare ticket has been created in {channel.mention}", discord.Color.green()), ephemeral=True)
+
+@bot.hybrid_command(name="ssclose", description="Close a screenshare ticket.")
+@is_staff()
+async def ss_close(ctx, *, reason: str = "No reason provided."):
+    # Find the target user from channel permissions to remove the role
+    target_user = None
+    for overwrite in ctx.channel.overwrites:
+        if isinstance(overwrite, discord.Member) and overwrite != ctx.author and not overwrite.bot:
+            target_user = overwrite
+            break
+
+    if target_user:
+        frozen_role = get(ctx.guild.roles, id=bot.config.get('frozen_role_id'))
+        if frozen_role and frozen_role in target_user.roles:
+            await target_user.remove_roles(frozen_role, reason=f"SS ticket closed by {ctx.author}")
+            
+    await close_ticket.callback(ctx, reason=reason)
+
+@bot.hybrid_command(name="poll", description="Start a new PPP poll for a user.")
+@is_ppp_manager()
+async def poll(ctx, kind: str, member: discord.Member):
+    pups_role = get(ctx.guild.roles, id=bot.config.get('pups_role_id'))
+    pugs_role = get(ctx.guild.roles, id=bot.config.get('pugs_role_id'))
+    premium_role = get(ctx.guild.roles, id=bot.config.get('premium_role_id'))
+    voting_channel = get(ctx.guild.channels, id=bot.config.get('ppp_voting_channel_id'))
+    if not all([pups_role, pugs_role, premium_role, voting_channel]):
+        return await ctx.send(embed=create_embed("Error", "PPP system not fully configured. Ensure pups_role_id, pugs_role_id, premium_role_id, and ppp_voting_channel_id are set.", discord.Color.red()), ephemeral=True)
+
+    async with bot.db_pool.acquire() as conn:
+        async with conn.cursor() as cursor:
+            try:
+                await cursor.execute("INSERT INTO ppp_polls (user_id, kind) VALUES (%s, %s)", (member.id, kind))
+                poll_id = cursor.lastrowid
+            except aiomysql.IntegrityError:
+                return await ctx.send(embed=create_embed("Error", "A poll of this kind already exists for this user.", discord.Color.red()), ephemeral=True)
+    embed = create_embed(f"PPP Poll: {kind.capitalize()}", f"A poll has been started for {member.mention}.")
+    embed.add_field(name="Status", value="OPEN ✅")
+    msg = await voting_channel.send(embed=embed)
+    await msg.add_reaction("👍"); await msg.add_reaction("👎")
+    async with bot.db_pool.acquire() as conn:
+        async with conn.cursor() as cursor:
+            await cursor.execute("UPDATE ppp_polls SET message_id = %s WHERE poll_id = %s", (msg.id, poll_id))
+    await ctx.send(f"Poll for {member.mention} created in {voting_channel.mention}")
+
+@bot.hybrid_command(name="pollclose", description="Close an active PPP poll.")
+@is_ppp_manager()
+async def pollclose(ctx, kind: str, member: discord.Member):
+    voting_channel = get(ctx.guild.channels, id=bot.config.get('ppp_voting_channel_id'))
+    async with bot.db_pool.acquire() as conn:
+        async with conn.cursor() as cursor:
+            await cursor.execute("SELECT poll_id, message_id FROM ppp_polls WHERE user_id = %s AND kind = %s AND is_open = TRUE", (member.id, kind))
+            poll_data = await cursor.fetchone()
+            if not poll_data: return await ctx.send("No active poll of this kind found for the user.", ephemeral=True)
+            poll_id, msg_id = poll_data
+            await cursor.execute("UPDATE ppp_polls SET is_open = FALSE, closed_at = NOW() WHERE poll_id = %s", (poll_id,))
+    try:
+        msg = await voting_channel.fetch_message(msg_id)
+        embed = msg.embeds[0]
+        embed.fields[0].value = "CLOSED ❌"
+        embed.color = discord.Color.red()
+        upvotes = get(msg.reactions, emoji="👍").count - 1
+        downvotes = get(msg.reactions, emoji="👎").count - 1
+        embed.add_field(name="Final Results", value=f"👍 {upvotes} - 👎 {downvotes}")
+        await msg.edit(embed=embed)
+    except discord.NotFound: pass
+    await ctx.send(f"Poll for {member.mention} has been closed.")
+
+@bot.hybrid_command(name="mypoll", description="Check the status of your PPP poll.")
+async def mypoll(ctx, kind: str):
+    async with bot.db_pool.acquire() as conn:
+        async with conn.cursor() as cursor:
+            await cursor.execute("SELECT is_open, message_id FROM ppp_polls WHERE user_id = %s AND kind = %s", (ctx.author.id, kind))
+            poll_data = await cursor.fetchone()
+    if not poll_data: return await ctx.send("You do not have a poll of this kind.", ephemeral=True)
+    is_open, msg_id = poll_data
+    status = "OPEN ✅" if is_open else "CLOSED ❌"
+    await ctx.send(f"Your `{kind}` poll is currently **{status}**. Link: https://discord.com/channels/{ctx.guild.id}/{bot.config.get('ppp_voting_channel_id')}/{msg_id}")
+
+async def manage_ppp_role(ctx, user: discord.Member, role_name: str, action: str):
+    role_key = f"{role_name.lower()}_role_id"
+    role = get(ctx.guild.roles, id=bot.config.get(role_key))
+    updates_channel = get(ctx.guild.channels, id=bot.config.get('ppp_updates_channel_id'))
+    if not role or not updates_channel:
+        return await ctx.send(embed=create_embed("Error", "PPP system roles or updates channel not configured.", discord.Color.red()), ephemeral=True)
+    
+    if action == "add":
+        if role in user.roles:
+            return await ctx.send(f"{user.mention} already has the {role.name} role.", ephemeral=True)
+        await user.add_roles(role)
+        desc = f"{user.mention} has been given the **{role.name}** role by {ctx.author.mention}."
+        await ctx.send(f"Added {role.name} to {user.mention}.", ephemeral=True)
+    else: # remove
+        if role not in user.roles:
+            return await ctx.send(f"{user.mention} does not have the {role.name} role.", ephemeral=True)
+        await user.remove_roles(role)
+        desc = f"{user.mention} has had the **{role.name}** role removed by {ctx.author.mention}."
+        await ctx.send(f"Removed {role.name} from {user.mention}.", ephemeral=True)
+        
+    await updates_channel.send(embed=create_embed(f"PPP Role Update", desc, discord.Color.blue()))
+
+
+@bot.hybrid_group(name="pups", description="Manage the PUPS role.")
+@is_ppp_manager()
+async def pups(ctx):
+    if ctx.invoked_subcommand is None: await ctx.send("Invalid command. Use `add` or `remove`.", ephemeral=True)
+@pups.command(name="add")
+async def pups_add(ctx, user: discord.Member): await manage_ppp_role(ctx, user, "pups", "add")
+@pups.command(name="remove")
+async def pups_remove(ctx, user: discord.Member): await manage_ppp_role(ctx, user, "pups", "remove")
+
+
+@bot.hybrid_group(name="pugs", description="Manage the PUGS role.")
+@is_ppp_manager()
+async def pugs(ctx):
+    if ctx.invoked_subcommand is None: await ctx.send("Invalid command. Use `add` or `remove`.", ephemeral=True)
+@pugs.command(name="add")
+async def pugs_add(ctx, user: discord.Member): await manage_ppp_role(ctx, user, "pugs", "add")
+@pugs.command(name="remove")
+async def pugs_remove(ctx, user: discord.Member): await manage_ppp_role(ctx, user, "pugs", "remove")
+
+
+@bot.hybrid_group(name="premium", description="Manage the Premium role.")
+@is_ppp_manager()
+async def premium(ctx):
+    if ctx.invoked_subcommand is None: await ctx.send("Invalid command. Use `add` or `remove`.", ephemeral=True)
+@premium.command(name="add")
+async def premium_add(ctx, user: discord.Member): await manage_ppp_role(ctx, user, "premium", "add")
+@premium.command(name="remove")
+async def premium_remove(ctx, user: discord.Member): await manage_ppp_role(ctx, user, "premium", "remove")
 
 # --- Run ---
 if __name__ == "__main__":
