@@ -529,17 +529,29 @@ async def on_command_error(ctx, error):
     if ctx.prefix == bot.command_prefix and ctx.message:
         try: await ctx.message.remove_reaction(emoji, bot.user)
         except discord.Forbidden: pass
+    
+    error_embed = None
     if isinstance(error, commands.CommandNotFound): return
     elif isinstance(error, NotInRegisterChannel):
         register_channel = get(ctx.guild.channels, id=bot.config.get('register_channel_id'))
-        await ctx.send(f"This command can only be used in {register_channel.mention}.", ephemeral=True)
-    elif isinstance(error, commands.CheckFailure): await ctx.send(embed=create_embed("Permission Denied", "You do not have the required permissions for this command.", discord.Color.red()), ephemeral=True)
+        error_embed = create_embed("Incorrect Channel", f"This command can only be used in {register_channel.mention}.", discord.Color.orange())
+    elif isinstance(error, commands.CheckFailure): 
+        error_embed = create_embed("Permission Denied", "You do not have the required permissions for this command.", discord.Color.red())
     elif isinstance(error, commands.MissingRequiredArgument):
-        embed = create_embed("Incorrect Usage", f"You missed an argument: `{error.param.name}`.", discord.Color.orange())
-        embed.add_field(name="Correct Format", value=f"`{ctx.prefix}{ctx.command.name} {ctx.command.signature}`")
-        await ctx.send(embed=embed, ephemeral=True)
-    elif isinstance(error, commands.CommandError) and "is a required argument that is missing" in str(error): await ctx.send(embed=create_embed("Missing Attachment", "You must attach an image as proof.", discord.Color.orange()), ephemeral=True)
-    else: logger.error(f"Error in command '{ctx.command}': {error}"); await ctx.send(embed=create_embed("Error", "An unexpected error occurred.", discord.Color.dark_red()), ephemeral=True)
+        error_embed = create_embed("Incorrect Usage", f"You missed an argument: `{error.param.name}`.", discord.Color.orange())
+        error_embed.add_field(name="Correct Format", value=f"`{ctx.prefix or '/'}{ctx.command.name} {ctx.command.signature}`")
+    elif isinstance(error, commands.CommandError) and "is a required argument that is missing" in str(error): 
+        error_embed = create_embed("Missing Attachment", "You must attach an image as proof.", discord.Color.orange())
+    else: 
+        logger.error(f"Error in command '{ctx.command}': {error}")
+        error_embed = create_embed("Error", "An unexpected error occurred.", discord.Color.dark_red())
+    
+    if error_embed:
+        try:
+            await ctx.send(embed=error_embed, ephemeral=True)
+        except Exception as e:
+            logger.error(f"Failed to send error message: {e}")
+
 
 @bot.event
 async def on_voice_state_update(member, before, after):
@@ -597,8 +609,8 @@ async def on_raw_reaction_add(payload):
 
 # --- ALL COMMANDS ---
 # ...
-# The rest of the code is here, including the new /nick and /rename commands
-# and the updated /info command. It is identical to the previous version.
+# The rest of the file is here. It is identical to the previous version.
+# ...
 
 # --- Run ---
 print("Executing main block...")
