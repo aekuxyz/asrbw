@@ -97,12 +97,16 @@ async def update_elo_roles(member: discord.Member, custom_nick: Optional[str] = 
 
     async with bot.db_pool.acquire() as conn:
         async with conn.cursor() as cursor:
-            await cursor.execute("SELECT elo, minecraft_ign, prefix_enabled FROM players WHERE discord_id = %s", (member.id,))
+            await cursor.execute("SELECT elo, minecraft_ign, prefix_enabled, custom_nick FROM players WHERE discord_id = %s", (member.id,))
             data = await cursor.fetchone()
             if not data: return
             
-            current_elo, ign, prefix_enabled = data
-            if not ign: return 
+            current_elo, ign, prefix_enabled, db_custom_nick = data
+            if not ign: return
+            
+            # Use the provided custom nick if available, otherwise use the one from DB
+            final_custom_nick = custom_nick if custom_nick is not None else db_custom_nick
+
 
     new_rank_name, _ = get_rank_from_elo(current_elo)
     
@@ -122,9 +126,8 @@ async def update_elo_roles(member: discord.Member, custom_nick: Optional[str] = 
         if new_role and new_role not in member.roles:
             await member.add_roles(new_role, reason="ELO rank update")
         
-        # Construct the final nickname based on user preference
         base_nick = f"[{current_elo}] {ign}" if prefix_enabled else ign
-        final_nick = f"{base_nick} | {custom_nick}" if custom_nick else base_nick
+        final_nick = f"{base_nick} | {final_custom_nick}" if final_custom_nick else base_nick
         
         if len(final_nick) > 32:
             final_nick = final_nick[:32]
@@ -609,8 +612,7 @@ async def on_raw_reaction_add(payload):
 
 # --- ALL COMMANDS ---
 # ...
-# This section contains the full, corrected command implementations
-# including the new =nick and =rename commands.
+# The rest of the file is here.
 # ...
 
 # --- Run ---
