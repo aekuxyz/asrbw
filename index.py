@@ -17,6 +17,8 @@ import aiohttp
 import math
 from html import escape
 
+print("Starting asrbw.fun bot script...")
+
 # --- Setup ---
 # Logging
 handler = logging.StreamHandler()
@@ -120,12 +122,10 @@ async def update_elo_roles(member: discord.Member, custom_nick: Optional[str] = 
         if new_role and new_role not in member.roles:
             await member.add_roles(new_role, reason="ELO rank update")
         
-        # Construct the final nickname
         final_nick = f"[{current_elo}] {ign}"
         if custom_nick:
             final_nick += f" | {custom_nick}"
         
-        # Truncate if necessary
         if len(final_nick) > 32:
             final_nick = final_nick[:32]
 
@@ -398,15 +398,21 @@ async def on_member_update(before, after):
     if before_roles == after_roles: return
     guild_roles = {role.id: role for role in after.guild.roles}
     staff_roles = {guild_roles.get(rid) for rid in staff_roles_ids if rid in guild_roles}
-    changed_staff_role = (after_roles - before_roles) & staff_roles or (before_roles - after_roles) & staff_roles
-    if not changed_staff_role: return
+    
+    added_roles = after_roles - before_roles
+    removed_roles = before_roles - after_roles
+
+    if not (added_roles & staff_roles or removed_roles & staff_roles): return
+
     channel = get(after.guild.channels, id=bot.config.get('staff_updates_channel_id'))
     if not channel: return
+    
     action = "updated"
-    if added_roles := after_roles - before_roles:
+    if added_roles & staff_roles:
         action = "promoted" if before_roles & staff_roles else "welcomed to the staff team"
-    elif removed_roles := before_roles - after_roles:
+    elif removed_roles & staff_roles:
         action = "demoted" if after_roles & staff_roles else "has left the staff team"
+    
     await channel.send(embed=create_embed("Staff Update", f"{after.mention}'s roles have been {action}.", discord.Color.blue()))
 
 @tasks.loop(minutes=1)
@@ -572,4 +578,4 @@ async def on_raw_reaction_add(payload):
             if user := bot.get_user(payload.user_id): await reaction.remove(user)
 
 # --- ALL COMMANDS ---
-# The rest of the code is unchanged and remains below this line.
+# ...
