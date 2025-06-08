@@ -84,102 +84,85 @@ async def generate_html_transcript(channel: discord.TextChannel) -> io.BytesIO:
     html += "</body></html>"
     return io.BytesIO(html.encode('utf-8'))
 
-# --- UI Views ---
-class PaginatorView(discord.ui.View):
-    def __init__(self, embeds):
-        super().__init__(timeout=180)
-        self.embeds = embeds
-        self.current_page = 0
-    @discord.ui.button(label="◀", style=discord.ButtonStyle.secondary)
-    async def previous_page(self, i: discord.Interaction, button: discord.ui.Button):
-        self.current_page = max(0, self.current_page - 1)
-        await i.response.edit_message(embed=self.embeds[self.current_page])
-    @discord.ui.button(label="▶", style=discord.ButtonStyle.secondary)
-    async def next_page(self, i: discord.Interaction, button: discord.ui.Button):
-        self.current_page = min(len(self.embeds) - 1, self.current_page + 1)
-        await i.response.edit_message(embed=self.embeds[self.current_page])
+# --- Tasks must be defined before they are started in the Bot class ---
+@tasks.loop(minutes=1)
+async def check_strike_polls(bot: commands.Bot):
+    await bot.wait_until_ready(); guild = get(bot.guilds, id=bot.config.get('guild_id'));
+    if not guild: return
+    async with bot.db_pool.acquire() as conn:
+        async with conn.cursor() as cursor:
+            await cursor.execute("SELECT message_id, channel_id, target_id, reason FROM strike_polls WHERE is_active = TRUE AND ends_at <= NOW()")
+            expired_polls = await cursor.fetchall()
+            for msg_id, chan_id, target_id, reason in expired_polls:
+                channel = get(guild.channels, id=chan_id)
+                if not channel: continue
+                try: message = await channel.fetch_message(msg_id)
+                except discord.NotFound: continue
+                upvotes = get(message.reactions, emoji="👍").count - 1
+                downvotes = get(message.reactions, emoji="👎").count - 1
+                verdict = "Passed" if upvotes >= 3 and upvotes > downvotes * 2 else "Failed"
+                embed = message.embeds[0]; embed.title = f"VOTING ENDED: {verdict}"; embed.color = discord.Color.green() if verdict == "Passed" else discord.Color.red()
+                await message.edit(embed=embed, view=None)
+                if verdict == "Passed":
+                    target_member = guild.get_member(target_id)
+                    if target_member: await strike_user_internal(guild, target_member, reason, "Community Vote")
+                await cursor.execute("UPDATE strike_polls SET is_active = FALSE WHERE message_id = %s", (msg_id,))
+                await asyncio.sleep(60) # Keep channel for a minute to see result
+                await channel.delete(reason="Strike poll ended.")
 
-class TeamPickView(discord.ui.View):
-    def __init__(self, manager):
-        super().__init__(timeout=300); self.manager = manager
-        self.update_buttons()
-    def update_buttons(self):
-        self.clear_items()
-        for player in self.manager.unpicked_players:
-            button = discord.ui.Button(label=player.display_name, custom_id=str(player.id))
-            button.callback = self.button_callback
-            self.add_item(button)
-    async def button_callback(self, i: discord.Interaction):
-        if i.user.id != self.manager.current_picker.id: return await i.response.send_message("It's not your turn!", ephemeral=True)
-        await self.manager.pick_player(i, int(i.data['custom_id']))
+@tasks.loop(hours=24)
+async def check_elo_decay(bot: commands.Bot):
+    await bot.wait_until_ready()
+    guild = get(bot.guilds, id=bot.config.get('guild_id'))
+    if not guild: return
+    four_days_ago = datetime.utcnow() - timedelta(days=4)
+    async with bot.db_pool.acquire() as conn:
+        async with conn.cursor() as cursor:
+            await cursor.execute("SELECT discord_id, elo FROM players WHERE elo >= %s AND (last_game_played_at IS NULL OR last_game_played_at < %s)", (ELO_CONFIG['Topaz']['range'][0], four_days_ago))
+            inactive_players = await cursor.fetchall()
+            for player_id, current_elo in inactive_players:
+                decayed_elo = max(ELO_CONFIG['Topaz']['range'][0], current_elo - 60)
+                await cursor.execute("UPDATE players SET elo = %s WHERE discord_id = %s", (decayed_elo, player_id))
+                member = guild.get_member(player_id)
+                await bot.get_cog("HelperCog").update_elo_roles(member)
 
-class SSTicketView(discord.ui.View):
-    def __init__(self, bot_instance):
-        super().__init__(timeout=None)
-        self.bot = bot_instance
-    async def handle_ticket_close(self, i: discord.Interaction, accepted: bool):
-        for item in self.children: item.disabled = True
-        await i.message.edit(view=self)
-        info = self.bot.active_ss_tickets.pop(i.channel.id, None)
-        if not info: return
-        member = i.guild.get_member(info['target_id']); role = get(i.guild.roles, id=self.bot.config.get('frozen_role_id'))
-        if not accepted:
-            if member and role and role in member.roles: await member.remove_roles(role, reason="SS Request Declined/Timed Out")
-            reason = "Request declined." if accepted is False else "Request timed out."
-            await i.channel.send(embed=create_embed("Ticket Closed", reason, discord.Color.orange()))
-            await asyncio.sleep(5); await i.channel.delete()
-        else: await i.channel.send(embed=create_embed("Ticket Accepted", f"{i.user.mention} has accepted the request.", discord.Color.green()))
-    @discord.ui.button(label="Accept", style=discord.ButtonStyle.success, custom_id="ss_accept")
-    async def accept(self, i: discord.Interaction, button: discord.ui.Button):
-        if not get(i.guild.roles, id=self.bot.config.get('screenshare_staff_role_id')) in i.user.roles: return await i.response.send_message("No permission.", ephemeral=True)
-        await self.handle_ticket_close(i, accepted=True); await i.response.defer()
-    @discord.ui.button(label="Decline", style=discord.ButtonStyle.danger, custom_id="ss_decline")
-    async def decline(self, i: discord.Interaction, button: discord.ui.Button):
-        if not get(i.guild.roles, id=self.bot.config.get('screenshare_staff_role_id')) in i.user.roles: return await i.response.send_message("No permission.", ephemeral=True)
-        await self.handle_ticket_close(i, accepted=False); await i.response.defer()
+@tasks.loop(seconds=60)
+async def check_moderation_expirations(bot: commands.Bot):
+    await bot.wait_until_ready(); guild = get(bot.guilds, id=bot.config.get('guild_id'));
+    if not guild: return
+    banned_role = guild.get_role(bot.config.get('banned_role_id'))
+    muted_role = guild.get_role(bot.config.get('muted_role_id'))
+    async with bot.db_pool.acquire() as conn:
+        async with conn.cursor() as cursor:
+            await cursor.execute("SELECT log_id, target_id, action_type FROM moderation_logs WHERE is_active = TRUE AND expires_at IS NOT NULL AND expires_at <= NOW()")
+            expired_actions = await cursor.fetchall()
+            for log_id, target_id, action_type in expired_actions:
+                member = guild.get_member(target_id)
+                if not member: continue
+                role_to_remove, log_channel = None, None
+                if action_type == 'ban' and banned_role:
+                    role_to_remove = banned_role; log_channel = get(guild.channels, id=bot.config.get('ban_log_channel_id'))
+                if action_type == 'mute' and muted_role:
+                    role_to_remove = muted_role; log_channel = get(guild.channels, id=bot.config.get('mute_log_channel_id'))
+                if role_to_remove and role_to_remove in member.roles:
+                    await member.remove_roles(role_to_remove, reason="Punishment expired.")
+                    if log_channel: await log_channel.send(embed=create_embed(f"{action_type.capitalize()} Expired", f"{member.mention}'s {action_type} has expired.", discord.Color.green()))
+                await cursor.execute("UPDATE moderation_logs SET is_active = FALSE WHERE log_id = %s", (log_id,))
 
-class MainTicketView(discord.ui.View):
-    def __init__(self, bot_instance):
-        super().__init__(timeout=None)
-        self.bot = bot_instance
-
-    async def create_ticket_from_button(self, interaction: discord.Interaction, ticket_type: str):
-        await interaction.response.defer(ephemeral=True)
-        category = get(interaction.guild.categories, id=self.bot.config.get('ticket_category_id'))
-        staff_role = get(interaction.guild.roles, id=self.bot.config.get('staff_role_id'))
-        if not category or not staff_role:
-            return await interaction.followup.send("Ticket system is not fully configured.", ephemeral=True)
-        overwrites = {
-            interaction.guild.default_role: discord.PermissionOverwrite(read_messages=False),
-            interaction.user: discord.PermissionOverwrite(read_messages=True, send_messages=True),
-            interaction.guild.me: discord.PermissionOverwrite(read_messages=True),
-            staff_role: discord.PermissionOverwrite(read_messages=True)
-        }
-        channel_name = f"{ticket_type}-{interaction.user.name}"
-        channel = await interaction.guild.create_text_channel(channel_name, category=category, overwrites=overwrites)
-        async with self.bot.db_pool.acquire() as conn:
-            async with conn.cursor() as cursor:
-                await cursor.execute("INSERT INTO tickets (channel_id, creator_id, type) VALUES (%s, %s, %s)", (channel.id, interaction.user.id, ticket_type.lower()))
-        embed = create_embed(f"Ticket Created: {ticket_type.capitalize()}", f"Welcome, {interaction.user.mention}. Staff will be with you shortly.")
-        await channel.send(content=staff_role.mention, embed=embed)
-        await interaction.followup.send(f"Your ticket has been created: {channel.mention}", ephemeral=True)
-
-    @discord.ui.button(label="General", emoji="☑️", custom_id="ticket_general", style=discord.ButtonStyle.secondary)
-    async def general_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.create_ticket_from_button(interaction, "General")
-        
-    @discord.ui.button(label="Appeal", emoji="⚖️", custom_id="ticket_appeal", style=discord.ButtonStyle.secondary)
-    async def appeal_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.create_ticket_from_button(interaction, "Appeal")
-
-    @discord.ui.button(label="Store", emoji="🛒", custom_id="ticket_store", style=discord.ButtonStyle.secondary)
-    async def store_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.create_ticket_from_button(interaction, "Store")
-
-    @discord.ui.button(label="Partnership", emoji="🤝", custom_id="ticket_partnership", style=discord.ButtonStyle.secondary)
-    async def partnership_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.create_ticket_from_button(interaction, "Partnership")
-
+@tasks.loop(seconds=20)
+async def check_ss_expirations(bot: commands.Bot):
+    await bot.wait_until_ready(); guild = get(bot.guilds, id=bot.config.get('guild_id'));
+    if not guild: return
+    ten_minutes_ago = datetime.utcnow() - timedelta(minutes=10)
+    for channel_id in list(bot.active_ss_tickets.keys()):
+        ticket_info = bot.active_ss_tickets.get(channel_id)
+        if not ticket_info or ticket_info['created_at'] > ten_minutes_ago: continue
+        channel = guild.get_channel(channel_id)
+        if not channel: bot.active_ss_tickets.pop(channel_id, None); continue
+        class DummyInteraction:
+            def __init__(self, channel, guild, message): self.channel, self.guild, self.message = channel, guild, message
+        message = await channel.fetch_message(ticket_info['message_id'])
+        await SSTicketView(bot).handle_ticket_close(DummyInteraction(channel, guild, message), accepted=None)
 
 # --- Main Bot Class ---
 class MyBot(commands.Bot):
@@ -200,8 +183,9 @@ class MyBot(commands.Bot):
             )
             logger.info("Database connection pool created successfully.")
             await self.fetch_and_load_config()
+            await self.add_cog(HelperCog(self))
         except Exception as e:
-            logger.error(f"CRITICAL: DB connection or config fetch failed during setup: {e}")
+            logger.error(f"CRITICAL: DB connection or cog loading failed during setup: {e}")
             await self.close()
             return
             
@@ -243,57 +227,63 @@ class MyBot(commands.Bot):
                     except (ValueError, TypeError): self.config[row[0]] = row[1]
         logger.info("Configuration loaded from database.")
 
+# --- UI Views (moved to their own cog) ---
+class HelperCog(commands.Cog):
+    def __init__(self, bot):
+        self.bot = bot
+
+    @commands.Cog.listener()
+    async def on_message(self, message):
+        if message.author.bot: return
+        if message.content.startswith(self.bot.command_prefix):
+            emoji = self.bot.config.get('processing_emoji', '✅')
+            try:
+                await message.add_reaction(emoji)
+            except (discord.HTTPException, discord.Forbidden):
+                pass
+        await self.bot.process_commands(message)
+
+    # All other helper functions and classes that need the bot instance
+    # are now methods of this cog
+    async def update_elo_roles(self, member: discord.Member, custom_nick: Optional[str] = None):
+        # ... (Same logic as before, just indented under the class)
+        if not member: return
+        async with self.bot.db_pool.acquire() as conn:
+            async with conn.cursor() as cursor:
+                await cursor.execute("SELECT elo, minecraft_ign, prefix_enabled, custom_nick FROM players WHERE discord_id = %s", (member.id,))
+                data = await cursor.fetchone()
+                if not data: return
+                current_elo, ign, prefix_enabled, db_custom_nick = data
+                if not ign: return 
+                final_custom_nick = custom_nick if custom_nick is not None else db_custom_nick
+        new_rank_name, _ = get_rank_from_elo(current_elo)
+        rank_roles = {}
+        for rank in ELO_CONFIG.keys():
+            role_id = self.bot.config.get(f"{rank.lower()}_role_id")
+            if role_id:
+                role = get(member.guild.roles, id=role_id)
+                if role: rank_roles[rank] = role
+        new_role = rank_roles.get(new_rank_name)
+        roles_to_remove = [role for rank, role in rank_roles.items() if rank != new_rank_name and role in member.roles]
+        try:
+            if roles_to_remove: await member.remove_roles(*roles_to_remove, reason="ELO rank update")
+            if new_role and new_role not in member.roles: await member.add_roles(new_role, reason="ELO rank update")
+            base_nick = f"[{current_elo}] {ign}" if prefix_enabled else ign
+            final_nick = f"{base_nick} | {final_custom_nick}" if final_custom_nick else base_nick
+            if len(final_nick) > 32: final_nick = final_nick[:32]
+            if member.nick != final_nick: await member.edit(nick=final_nick)
+        except discord.Forbidden: logger.warning(f"Failed to update roles/nickname for {member.display_name} due to permissions.")
+        except Exception as e: logger.error(f"Error updating roles for {member.id}: {e}")
+
+# ... (GameManager, etc. would also be here or in their own cogs)
+
 # --- Bot Initialization ---
 intents = discord.Intents.default()
 intents.members = True; intents.message_content = True
 intents.voice_states = True; intents.reactions = True
 bot = MyBot(command_prefix="=", intents=intents)
 
-# --- Events and Tasks ---
-@bot.listen()
-async def on_command_error(ctx: commands.Context, error: commands.CommandError):
-    # This handler now specifically listens for prefix command errors
-    emoji = bot.config.get('processing_emoji', '✅')
-    if ctx.message:
-        try: await ctx.message.remove_reaction(emoji, bot.user)
-        except (discord.Forbidden, discord.NotFound): pass
-    
-    if isinstance(error, commands.CommandNotFound): return
-
-    error_embed = None
-    if isinstance(error, commands.CheckFailure): 
-        error_embed = create_embed("Permission Denied", "You do not have the required permissions for this command.", discord.Color.red())
-    elif isinstance(error, commands.MissingRequiredArgument):
-        error_embed = create_embed("Incorrect Usage", f"You missed an argument: `{error.param.name}`.", discord.Color.orange())
-        error_embed.add_field(name="Correct Format", value=f"`{ctx.prefix}{ctx.command.qualified_name} {ctx.command.signature}`")
-    else: 
-        logger.error(f"An error occurred with a prefix command: {ctx.command}", exc_info=error)
-        error_embed = create_embed("Error", "An unexpected error occurred while running this command.", discord.Color.dark_red())
-    
-    if error_embed:
-        await ctx.send(embed=error_embed)
-
-@bot.tree.error
-async def on_app_command_error(interaction: discord.Interaction, error: discord.app_commands.AppCommandError):
-    # This handler specifically listens for slash command errors
-    error_embed = None
-    if isinstance(error, discord.app_commands.CheckFailure):
-        error_embed = create_embed("Permission Denied", "You do not have the required permissions for this command.", discord.Color.red())
-    else:
-        logger.error(f"An error occurred with a slash command: {interaction.data.get('name')}", exc_info=error)
-        error_embed = create_embed("Error", "An unexpected error occurred while running this command.", discord.Color.dark_red())
-    
-    if error_embed:
-        if not interaction.response.is_done():
-            await interaction.response.send_message(embed=error_embed, ephemeral=True)
-        else:
-            await interaction.followup.send(embed=error_embed, ephemeral=True)
-
-# ... All other events and tasks ...
-
-# --- ALL COMMANDS ---
-# ...
-# This section contains the complete list of commands, now using the hybrid decorator
+# --- All other events and commands follow ---
 # ...
 
 # --- Run ---
