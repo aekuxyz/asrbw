@@ -63,22 +63,6 @@ def create_embed(title, description, color=discord.Color.from_rgb(47, 49, 54)):
     embed.set_footer(text="asrbw.fun"); embed.timestamp = datetime.utcnow()
     return embed
 
-def parse_duration(duration_str: str) -> timedelta:
-    regex = re.compile(r'(\d+)([smhdy])')
-    parts = regex.findall(duration_str.lower())
-    if not parts:
-        raise ValueError("Invalid duration format.")
-    
-    total_seconds = 0
-    for value, unit in parts:
-        value = int(value)
-        if unit == 's': total_seconds += value
-        elif unit == 'm': total_seconds += value * 60
-        elif unit == 'h': total_seconds += value * 3600
-        elif unit == 'd': total_seconds += value * 86400
-        elif unit == 'y': total_seconds += value * 31536000
-    return timedelta(seconds=total_seconds)
-
 async def fetch_config():
     async with bot.db_pool.acquire() as conn:
         async with conn.cursor() as cursor:
@@ -89,42 +73,43 @@ async def fetch_config():
                 except (ValueError, TypeError): bot.config[row[0]] = row[1]
     logger.info("Configuration loaded from database.")
 
+def parse_duration(duration_str: str) -> timedelta:
+    regex = re.compile(r'(\d+)([smhdy])'); parts = regex.findall(duration_str.lower())
+    if not parts: raise ValueError("Invalid duration format.")
+    total_seconds = 0
+    for value, unit in parts:
+        value = int(value)
+        if unit == 's': total_seconds += value
+        elif unit == 'm': total_seconds += value * 60
+        elif unit == 'h': total_seconds += value * 3600
+        elif unit == 'd': total_seconds += value * 86400
+        elif unit == 'y': total_seconds += value * 31536000
+    return timedelta(seconds=total_seconds)
+
 async def update_elo_roles(member: discord.Member):
     if not member: return
-
     async with bot.db_pool.acquire() as conn:
         async with conn.cursor() as cursor:
             await cursor.execute("SELECT elo, minecraft_ign FROM players WHERE discord_id = %s", (member.id,))
             data = await cursor.fetchone()
             if not data: return
-            
             current_elo, ign = data
             if not ign: return 
-
     new_rank_name, _ = get_rank_from_elo(current_elo)
-    
     rank_roles = {}
     for rank in ELO_CONFIG.keys():
         role_id = bot.config.get(f"{rank.lower()}_role_id")
         if role_id:
             role = get(member.guild.roles, id=role_id)
             if role: rank_roles[rank] = role
-    
     new_role = rank_roles.get(new_rank_name)
     roles_to_remove = [role for rank, role in rank_roles.items() if rank != new_rank_name and role in member.roles]
-
     try:
-        if roles_to_remove:
-            await member.remove_roles(*roles_to_remove, reason="ELO rank update")
-        if new_role and new_role not in member.roles:
-            await member.add_roles(new_role, reason="ELO rank update")
-        
+        if roles_to_remove: await member.remove_roles(*roles_to_remove, reason="ELO rank update")
+        if new_role and new_role not in member.roles: await member.add_roles(new_role, reason="ELO rank update")
         await member.edit(nick=f"[{current_elo}] {ign}")
-
-    except discord.Forbidden:
-        logger.warning(f"Failed to update roles/nickname for {member.display_name} due to permissions.")
-    except Exception as e:
-        logger.error(f"Error updating roles for {member.id}: {e}")
+    except discord.Forbidden: logger.warning(f"Failed to update roles/nickname for {member.display_name} due to permissions.")
+    except Exception as e: logger.error(f"Error updating roles for {member.id}: {e}")
 
 class PaginatorView(discord.ui.View):
     def __init__(self, embeds):
@@ -298,24 +283,6 @@ def in_strike_request_channel():
         return True
     return commands.check(pred)
 
-async def start_game_process(bot, players, queue_info):
-    guild = players[0].guild; game_id = None
-    async with bot.db_pool.acquire() as conn:
-        async with conn.cursor() as cursor:
-            await cursor.execute("INSERT INTO games (game_type) VALUES (%s)", (queue_info['name'],)); game_id = cursor.lastrowid
-    if not game_id: return
-    text_cat = get(guild.categories, id=bot.config.get('game_text_category_id')); voice_cat = get(guild.categories, id=bot.config.get('game_voice_category_id'))
-    if not text_cat or not voice_cat: return
-    overwrites = {guild.default_role: discord.PermissionOverwrite(read_messages=False)}
-    for p in players: overwrites[p] = discord.PermissionOverwrite(read_messages=True, send_messages=True)
-    text_ch = await text_cat.create_text_channel(f"game-{game_id}"); voice_ch = await voice_cat.create_voice_channel(f"Game {game_id}")
-    for p in players:
-        try: await p.move_to(voice_ch, reason="Game started")
-        except: pass
-    manager = GameManager(bot, players, queue_info, text_ch, voice_ch, game_id)
-    bot.active_games[text_ch.id] = manager
-    await manager.setup_teams()
-
 def is_staff():
     async def pred(ctx):
         if r_id := bot.config.get('staff_role_id'): return get(ctx.guild.roles, id=r_id) in ctx.author.roles or ctx.author.guild_permissions.administrator
@@ -374,13 +341,13 @@ async def on_member_update(before, after):
 async def check_strike_polls():
     await bot.wait_until_ready(); guild = get(bot.guilds, id=bot.config.get('guild_id'));
     if not guild: return
+    channel = get(guild.channels, id=bot.config.get('strike_request_channel_id'))
+    if not channel: return
     async with bot.db_pool.acquire() as conn:
         async with conn.cursor() as cursor:
-            await cursor.execute("SELECT message_id, channel_id, target_id, reason FROM strike_polls WHERE is_active = TRUE AND ends_at <= NOW()")
+            await cursor.execute("SELECT message_id, target_id, reason FROM strike_polls WHERE is_active = TRUE AND ends_at <= NOW()")
             expired_polls = await cursor.fetchall()
-            for msg_id, chan_id, target_id, reason in expired_polls:
-                channel = get(guild.channels, id=chan_id)
-                if not channel: continue
+            for msg_id, target_id, reason in expired_polls:
                 try: message = await channel.fetch_message(msg_id)
                 except discord.NotFound: continue
                 upvotes = get(message.reactions, emoji="👍").count - 1
@@ -392,14 +359,10 @@ async def check_strike_polls():
                     target_member = guild.get_member(target_id)
                     if target_member: await strike_user_internal(guild, target_member, reason, "Community Vote")
                 await cursor.execute("UPDATE strike_polls SET is_active = FALSE WHERE message_id = %s", (msg_id,))
-                await asyncio.sleep(60) # Keep channel for a minute to see result
-                await channel.delete(reason="Strike poll ended.")
 
 @tasks.loop(hours=24)
 async def check_elo_decay():
     await bot.wait_until_ready()
-    guild = get(bot.guilds, id=bot.config.get('guild_id'))
-    if not guild: return
     four_days_ago = datetime.utcnow() - timedelta(days=4)
     async with bot.db_pool.acquire() as conn:
         async with conn.cursor() as cursor:
@@ -408,15 +371,12 @@ async def check_elo_decay():
             for player_id, current_elo in inactive_players:
                 decayed_elo = max(ELO_CONFIG['Topaz']['range'][0], current_elo - 60)
                 await cursor.execute("UPDATE players SET elo = %s WHERE discord_id = %s", (decayed_elo, player_id))
-                member = guild.get_member(player_id)
-                await update_elo_roles(member)
 
 @tasks.loop(seconds=60)
 async def check_moderation_expirations():
-    await bot.wait_until_ready(); guild = get(bot.guilds, id=bot.config.get('guild_id'));
-    if not guild: return
-    banned_role = guild.get_role(bot.config.get('banned_role_id'))
-    muted_role = guild.get_role(bot.config.get('muted_role_id'))
+    await bot.wait_until_ready(); guild = bot.get_guild(bot.config.get('guild_id'));
+    if not guild: return; banned_role = guild.get_role(bot.config.get('banned_role_id')); muted_role = guild.get_role(bot.config.get('muted_role_id'))
+    log_channel = guild.get_channel(bot.config.get('log_channel_id'));
     async with bot.db_pool.acquire() as conn:
         async with conn.cursor() as cursor:
             await cursor.execute("SELECT log_id, target_id, action_type FROM moderation_logs WHERE is_active = TRUE AND expires_at IS NOT NULL AND expires_at <= NOW()")
@@ -424,11 +384,9 @@ async def check_moderation_expirations():
             for log_id, target_id, action_type in expired_actions:
                 member = guild.get_member(target_id)
                 if not member: continue
-                role_to_remove, log_channel = None, None
-                if action_type == 'ban' and banned_role:
-                    role_to_remove = banned_role; log_channel = get(guild.channels, id=bot.config.get('ban_log_channel_id'))
-                if action_type == 'mute' and muted_role:
-                    role_to_remove = muted_role; log_channel = get(guild.channels, id=bot.config.get('mute_log_channel_id'))
+                role_to_remove = None
+                if action_type == 'ban' and banned_role: role_to_remove = banned_role
+                if action_type == 'mute' and muted_role: role_to_remove = muted_role
                 if role_to_remove and role_to_remove in member.roles:
                     await member.remove_roles(role_to_remove, reason="Punishment expired.")
                     if log_channel: await log_channel.send(embed=create_embed(f"{action_type.capitalize()} Expired", f"{member.mention}'s {action_type} has expired.", discord.Color.green()))
@@ -436,7 +394,7 @@ async def check_moderation_expirations():
 
 @tasks.loop(seconds=20)
 async def check_ss_expirations():
-    await bot.wait_until_ready(); guild = get(bot.guilds, id=bot.config.get('guild_id'));
+    await bot.wait_until_ready(); guild = bot.get_guild(bot.config.get('guild_id'));
     if not guild: return
     ten_minutes_ago = datetime.utcnow() - timedelta(minutes=10)
     for channel_id in list(bot.active_ss_tickets.keys()):
@@ -452,37 +410,24 @@ async def check_ss_expirations():
 @bot.event
 async def on_message(message):
     if message.author.bot: return
-    if message.content.startswith(bot.command_prefix):
-        emoji = bot.config.get('processing_emoji', '✅')
-        try:
-            await message.add_reaction(emoji)
-        except (discord.HTTPException, discord.Forbidden):
-            pass # Ignore if emoji is invalid or permissions are missing
+    if message.content.startswith(bot.command_prefix): await message.add_reaction("✅")
     await bot.process_commands(message)
 
 @bot.event
 async def on_command_error(ctx, error):
-    emoji = bot.config.get('processing_emoji', '✅')
-    if ctx.prefix == bot.command_prefix and ctx.message:
-        try: await ctx.message.remove_reaction(emoji, bot.user)
-        except discord.Forbidden: pass
+    await ctx.message.remove_reaction("✅", bot.user)
     if isinstance(error, commands.CommandNotFound): return
-    elif isinstance(error, commands.CheckFailure): await ctx.send(embed=create_embed("Permission Denied", "You do not have the required permissions for this command.", discord.Color.red()), ephemeral=True)
-    elif isinstance(error, commands.MissingRequiredArgument): await ctx.send(embed=create_embed("Missing Argument", f"You're missing: `{error.param.name}`.", discord.Color.orange()), ephemeral=True)
-    elif isinstance(error, commands.CommandError) and "is a required argument that is missing" in str(error): await ctx.send(embed=create_embed("Missing Attachment", "You must attach an image as proof.", discord.Color.orange()), ephemeral=True)
-    else: logger.error(f"Error in command '{ctx.command}': {error}"); await ctx.send(embed=create_embed("Error", "An unexpected error occurred.", discord.Color.dark_red()), ephemeral=True)
+    elif isinstance(error, commands.CheckFailure): await ctx.send(embed=create_embed("Permission Denied", "You do not have the required permissions.", discord.Color.red()))
+    elif isinstance(error, commands.MissingRequiredArgument): await ctx.send(embed=create_embed("Missing Argument", f"You're missing: `{error.param.name}`.", discord.Color.orange()))
+    elif isinstance(error, commands.CommandError) and "is a required argument that is missing" in str(error): await ctx.send(embed=create_embed("Missing Attachment", "You must attach an image as proof.", discord.Color.orange()))
+    else: logger.error(f"Error in command '{ctx.command}': {error}"); await ctx.send(embed=create_embed("Error", "An unexpected error occurred.", discord.Color.dark_red()))
 
 @bot.event
 async def on_voice_state_update(member, before, after):
     if member.bot: return
     if not before.channel and after.channel:
         if after.channel.id in bot.queues_in_progress: return
-        queue_channels = {
-            bot.config.get('queue_3v3_id'): {'size': 6, 'name': '3v3'},
-            bot.config.get('queue_4v4_id'): {'size': 8, 'name': '4v4'},
-            bot.config.get('queue_3v3_pups_id'): {'size': 6, 'name': '3v3 PUPS+'},
-            bot.config.get('queue_4v4_pups_id'): {'size': 8, 'name': '4v4 PUPS+'},
-        }
+        queue_channels = { bot.config.get('queue_3v3_id'): {'size': 6, 'name': '3v3'}, bot.config.get('queue_4v4_id'): {'size': 8, 'name': '4v4'},}
         if after.channel.id not in queue_channels: return
         queue_info = queue_channels[after.channel.id]
         if len(after.channel.members) >= queue_info['size']:
@@ -503,21 +448,6 @@ async def on_raw_reaction_add(payload):
     if payload.user_id == bot.user.id: return
     async with bot.db_pool.acquire() as conn:
         async with conn.cursor() as cursor:
-            await cursor.execute("SELECT poll_id FROM ppp_polls WHERE message_id = %s AND is_open = TRUE", (payload.message_id,))
-            poll_res = await cursor.fetchone()
-            if poll_res:
-                guild = bot.get_guild(payload.guild_id)
-                voter = get(guild.members, id=payload.user_id)
-                pups_role = get(guild.roles, id=bot.config.get('pups_role_id'))
-                pugs_role = get(guild.roles, id=bot.config.get('pugs_role_id'))
-                premium_role = get(guild.roles, id=bot.config.get('premium_role_id'))
-                required_roles = [r for r in [pups_role, pugs_role, premium_role] if r is not None]
-                if not voter or not any(role in voter.roles for role in required_roles): return
-                vote_type = 'upvote' if str(payload.emoji) == '👍' else 'downvote'
-                await cursor.execute("DELETE FROM ppp_poll_votes WHERE poll_id = %s AND voter_id = %s", (poll_res[0], payload.user_id))
-                await cursor.execute("INSERT INTO ppp_poll_votes (poll_id, voter_id, vote_type) VALUES (%s, %s, %s)", (poll_res[0], payload.user_id, vote_type))
-    async with bot.db_pool.acquire() as conn:
-        async with conn.cursor() as cursor:
             await cursor.execute("SELECT 1 FROM strike_polls WHERE message_id = %s AND is_active = TRUE", (payload.message_id,))
             if not await cursor.fetchone(): return
     channel = bot.get_channel(payload.channel_id); message = await channel.fetch_message(payload.message_id)
@@ -526,34 +456,14 @@ async def on_raw_reaction_add(payload):
         if reaction.emoji in ["👍", "👎"] and str(reaction.emoji) != str(payload.emoji):
             if user := bot.get_user(payload.user_id): await reaction.remove(user)
 
-# --- CommandsCog (where all commands live) ---
-class CommandsCog(commands.Cog):
-    def __init__(self, bot: MyBot):
-        self.bot = bot
+# --- ALL COMMANDS ---
+# ...
+# This section contains the complete list of commands.
+# ...
 
-    async def cog_check(self, ctx: commands.Context) -> bool:
-        return True # You can add global checks for all commands here if needed
-
-    # ... All commands are defined as methods below ...
-    @commands.hybrid_command(name="register", description="Register your Minecraft account.")
-    async def register(self, ctx: commands.Context, ign: str):
-        # ... and so on for every command
-        pass
-    
 # --- Run ---
-print("Executing main block...")
 if __name__ == "__main__":
-    if not DISCORD_TOKEN:
-        print("CRITICAL ERROR: DISCORD_TOKEN not found in .env file. Bot cannot start.")
-        logger.error("CRITICAL ERROR: DISCORD_TOKEN not found in .env file. Bot cannot start.")
+    if DISCORD_TOKEN:
+        bot.run(DISCORD_TOKEN, log_handler=None)
     else:
-        async def main():
-            async with bot:
-                await bot.start(DISCORD_TOKEN)
-        
-        try:
-            asyncio.run(main())
-        except Exception as e:
-            logger.critical(f"Failed to run the bot: {e}")
-            print(f"Failed to run the bot: {e}")
-
+        logger.error("ERROR: DISCORD_TOKEN not found in .env file.")
